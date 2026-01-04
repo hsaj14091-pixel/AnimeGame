@@ -89,11 +89,17 @@
 
     <div class="auth-bar">
         {% if user %}
-            <span>مرحباً، <b>{{ user['username'] }}</b> 👋</span>
+            <a href="/profile" style="text-decoration:none; display:flex; align-items:center; gap:10px;">
+                <span style="color:white; font-size:1.1rem;">مرحباً، <b>{{ user['username'] }}</b> 👤</span>
+            </a>
+            
             {% if user['mal_username'] %}
                 <span style="font-size:0.8rem; color:#2ecc71;">(MAL: {{ user['mal_username'] }})</span>
+            {% else %}
+                <a href="/profile" style="font-size:0.8rem; color:#f39c12; text-decoration:none;">(إضافة حساب MAL +)</a>
             {% endif %}
-            <a href="/logout" class="btn-auth" style="background:#c0392b">خروج</a>
+
+            <a href="/logout" class="btn-auth" style="background:#c0392b; margin-right:auto;">خروج</a>
         {% else %}
             <a href="/login" class="btn-auth btn-login">تسجيل دخول</a>
             <a href="/register" class="btn-auth btn-register">إنشاء حساب</a>
@@ -144,7 +150,6 @@
 
     <script>
         function playMal() {
-            // نجمع الخيارات التي حددها المستخدم
             let statuses = [];
             if(document.getElementById('cat_comp').checked) statuses.push('status=completed');
             if(document.getElementById('cat_watch').checked) statuses.push('status=watching');
@@ -156,8 +161,8 @@
                 return;
             }
 
-            // توجيه اللاعب للعبة مع الخيارات
-            window.location.href = "/play?mode=mal&" + statuses.join("&");
+            // نرسل اللاعب إلى صفحة المزامنة الجديدة
+            window.location.href = "/sync_mal?" + statuses.join("&");
         }
     </script>
 

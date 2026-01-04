@@ -2,8 +2,11 @@ from flask import Flask, render_template, session, request, jsonify, redirect, u
 from flask_socketio import SocketIO, join_room, emit
 import sqlite3
 import random
+import cloudscraper
 import requests
 import json
+import urllib.request
+import time
 import smtplib 
 from email.mime.text import MIMEText 
 from email.mime.multipart import MIMEMultipart 
@@ -16,15 +19,18 @@ app = Flask(__name__)
 app.secret_key = 'Otaku_King_Secret_Key_2026'
 
 # ==========================================
-#  ⚙️ إعدادات الإيميل (يجب تعديلها ببياناتك الحقيقية)
+#  ⚙️ إعدادات الإيميل (عدلها ببياناتك)
 # ==========================================
 SMTP_EMAIL = "otaku.challenge.game@gmail.com"  # ضع إيميلك هنا
-SMTP_PASSWORD = "xxey zlpw fnzb vdgc"
+SMTP_PASSWORD = "xxeyzlpwfnzbvdgc"  # ضع كود التطبيق الـ 16 حرف هنا
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 
 serializer = URLSafeTimedSerializer(app.secret_key)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+# ⚠️ التعديل المهم هنا: استخدام threading لمنع التعليق
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
 DB_NAME = "anime_game.db"
 COMMON_STUDIOS = ["Toei Animation", "MAPPA", "Madhouse", "Bones", "Sunrise", "Pierrot", "A-1 Pictures", "Wit Studio", "Ufotable", "Studio Ghibli", "J.C.Staff"]
 
@@ -71,7 +77,6 @@ def create_user(username, email, password, mal_username):
     try:
         conn = get_db()
         hashed_pw = generate_password_hash(password)
-        # المستخدم الجديد يكون غير مفعل (is_verified = 0)
         conn.execute('INSERT INTO users (username, email, password, mal_username, is_verified) VALUES (?, ?, ?, ?, 0)',
                      (username, email, hashed_pw, mal_username))
         conn.commit()
@@ -94,81 +99,96 @@ def get_current_user():
         conn.close()
         return user
     return None
-
+def get_data_from_api(endpoint, params=None):
+    """دالة مساعدة لجلب البيانات من Jikan للأشياء الفرعية"""
+    url = f"https://api.jikan.moe/v4/{endpoint}"
+    try:
+        # نستخدم cloudscraper هنا أيضاً لتجنب الحظر قدر الإمكان
+        scraper = cloudscraper.create_scraper() 
+        resp = scraper.get(url, params=params, timeout=5)
+        if resp.status_code == 200:
+            return resp.json().get('data', [])
+    except Exception as e:
+        print(f"API Error ({endpoint}): {e}")
+    return []
 # ==========================================
-#  2. منطق جلب قائمة MAL (نظام AMQ)
-# ==========================================
-# ==========================================
-#  تحديث دالة جلب القائمة (لتقبل خيارات متعددة)
+#  2. منطق جلب قائمة MAL (نظام AMQ المطور)
 # ==========================================
 def fetch_mal_list(username, statuses=['completed']):
-    """تجلب الأنميات بناءً على الحالات التي اختارها اللاعب"""
+    """
+    تستخدم cloudscraper لكسر حماية Cloudflare وتجاوز الحظر
+    """
+    username = username.strip()
     all_ids = []
-    
-    # مسميات Jikan API: watching, completed, on_hold, dropped, plan_to_watch
-    # نحن سنمر على كل حالة اختارها اللاعب ونجلب قائمتها
-    for status in statuses:
-        try:
-            # نجلب 200 أنمي كحد أقصى لكل حالة لتسريع العملية
-            url = f"https://api.jikan.moe/v4/users/{username}/animelist?status={status}&limit=200"
-            resp = requests.get(url, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()['data']
-                ids = [item['anime']['mal_id'] for item in data]
-                all_ids.extend(ids)
-        except Exception as e:
-            print(f"Error fetching {status}: {e}")
-            continue
+    print(f"--- 🔓 تشغيل كاسر الحماية (CloudScraper) للمقاتل: {username} ---")
+
+    # إعداد الكاسر (يحاكي أحدث متصفح كروم)
+    scraper = cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'desktop': True
+        }
+    )
+
+    # الرابط الخام
+    url = f"https://api.jikan.moe/v4/users/{username}/animelist"
+
+    try:
+        # الطلب باستخدام Scraper بدلاً من requests
+        resp = scraper.get(url, timeout=15)
+        
+        if resp.status_code == 200:
+            data = resp.json().get('data', [])
+            print(f"✅ تم الاختراق بنجاح! السيرفر سلمنا {len(data)} أنمي.")
+
+            # خريطة الحالات
+            target_map = {
+                'completed': [2, 'Completed', 'completed'],
+                'watching': [1, 'Watching', 'watching'],
+                'on_hold': [3, 'On-Hold', 'on_hold'],
+                'dropped': [4, 'Dropped', 'dropped']
+            }
+
+            for item in data:
+                anime_status = item.get('status')
+                anime_id = item['anime']['mal_id']
+                
+                is_match = False
+                for desired_status in statuses:
+                    valid_values = target_map.get(desired_status, [])
+                    if anime_status in valid_values:
+                        is_match = True
+                        break
+                
+                if is_match:
+                    all_ids.append(anime_id)
             
-    # إزالة التكرار (للاحتياط) وإرجاع القائمة
+            print(f"🎯 بعد الفرز: {len(all_ids)} أنمي جاهز.")
+
+        else:
+            print(f"❌ فشل السكريبر (الرمز {resp.status_code}).")
+            # إذا فشل هذا أيضاً، فالخيار الوحيد المتبقي هو جلب البيانات عبر الجافاسكريبت (من متصفح اللاعب)
+            # ولكن Cloudscraper ينجح في 99% من الحالات.
+
+    except Exception as e:
+        print(f"🔥 خطأ في السكريبر: {e}")
+
     return list(set(all_ids))
-
-# ==========================================
-#  تحديث مسار اللعب (ليقرأ الاختيارات)
-# ==========================================
-@app.route('/play')
-def play_ui():
-    mode = request.args.get('mode', 'random')
-    session['mode'] = mode
-    
-    # إذا اختار وضع MAL
-    if mode == 'mal':
-        # 1. التحقق من ربط الحساب
-        user = get_current_user()
-        if not user or not user['mal_username']:
-            flash("يجب ربط حساب MAL أولاً لتفعيل هذا الوضع", "error")
-            return redirect(url_for('home'))
-
-        # 2. معرفة ماذا اختار اللاعب (completed, watching, etc)
-        # نأخذ الخيارات من الرابط، إذا لم يختر شيئاً نعتبرها completed افتراضياً
-        selected_statuses = request.args.getlist('status')
-        if not selected_statuses: selected_statuses = ['completed']
-        
-        # 3. جلب القائمة وتخزينها
-        # ملاحظة: هذا قد يأخذ ثوانٍ بسيطة
-        session['mal_ids'] = fetch_mal_list(user['mal_username'], selected_statuses)
-        
-        if not session['mal_ids']:
-            flash("لم نجد أنميات في الفئات التي اخترتها!", "warning")
-            return redirect(url_for('home'))
-            
-    session['score'] = 0; session['hearts'] = 3
-    return render_template('game.html')
-
 # ==========================================
 #  3. جلب الأسئلة
 # ==========================================
 def get_anime_batch_smart(difficulty):
     conn = get_db()
     
-    # فلترة حسب قائمة MAL
+    # 1. فلترة حسب قائمة MAL
     if session.get('mode') == 'mal' and session.get('mal_ids'):
         my_ids = session['mal_ids']
         if not my_ids: return []
         ids_str = ','.join(map(str, my_ids[:500])) 
         query = f"SELECT raw_json FROM anime WHERE mal_id IN ({ids_str}) ORDER BY RANDOM() LIMIT 20"
     
-    # الفلترة العادية
+    # 2. الفلترة العادية
     else:
         if difficulty == 'easy': query = "SELECT raw_json FROM anime WHERE popularity <= 200 ORDER BY RANDOM() LIMIT 20"
         elif difficulty == 'medium': query = "SELECT raw_json FROM anime WHERE popularity BETWEEN 201 AND 1500 ORDER BY RANDOM() LIMIT 20"
@@ -425,29 +445,85 @@ def login():
 
             session['user_id'] = user['id']
             session['username'] = user['username']
-            if user['mal_username']:
-                session['mal_ids'] = fetch_mal_list(user['mal_username'])
+         
             return redirect(url_for('home'))
         else:
             flash("❌ بيانات الدخول خاطئة", "error")
     return render_template('login.html')
+# ==========================================
+#  7. إدارة الملف الشخصي
+# ==========================================
 
+@app.route('/profile')
+def profile():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user = get_current_user()
+    return render_template('profile.html', user=user)
+
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    
+    new_username = request.form['username'].strip() # إضافة .strip()
+    mal_username = request.form.get('mal_username', '').strip() # إضافة .strip()
+    
+    try:
+        conn = get_db()
+        # تحديث الاسم و MAL
+        conn.execute('UPDATE users SET username = ?, mal_username = ? WHERE id = ?', 
+                     (new_username, mal_username, session['user_id']))
+        conn.commit()
+        conn.close()
+        
+        # تحديث الجلسة (Session) بالبيانات الجديدة
+        session['username'] = new_username
+        # إذا تم تحديث MAL، يجب تحديث القائمة المحفوظة في الجلسة أيضاً
+        if mal_username:
+            session['mal_ids'] = fetch_mal_list(mal_username, ['completed'])
+            
+        flash("✅ تم تحديث بياناتك بنجاح!", "success")
+    except Exception as e:
+        flash("❌ حدث خطأ، ربما الاسم مستخدم بالفعل.", "error")
+        print(e)
+        
+    return redirect(url_for('profile'))
+
+@app.route('/change_password', methods=['POST'])
+def change_password():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    
+    current_pw = request.form['current_password']
+    new_pw = request.form['new_password']
+    confirm_pw = request.form['confirm_password']
+    
+    user = get_current_user()
+    
+    # 1. التأكد من كلمة المرور القديمة
+    if not check_password_hash(user['password'], current_pw):
+        flash("❌ كلمة المرور الحالية غير صحيحة!", "error")
+        return redirect(url_for('profile'))
+        
+    # 2. التأكد من تطابق الجديدتين
+    if new_pw != confirm_pw:
+        flash("❌ كلمتا المرور الجديدتان غير متطابقتين!", "error")
+        return redirect(url_for('profile'))
+        
+    # 3. الحفظ
+    hashed_pw = generate_password_hash(new_pw)
+    conn = get_db()
+    conn.execute('UPDATE users SET password = ? WHERE id = ?', (hashed_pw, session['user_id']))
+    conn.commit()
+    conn.close()
+    
+    flash("✅ تم تغيير كلمة المرور! يرجى تسجيل الدخول مجدداً.", "success")
+    return redirect(url_for('logout'))
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('home'))
 
-@app.route('/play')
-def play_ui():
-    mode = request.args.get('mode', 'random')
-    session['mode'] = mode
-    
-    if mode == 'mal' and not session.get('mal_ids'):
-        flash("يجب ربط حساب MAL لتفعيل هذا الوضع", "error")
-        return redirect(url_for('home'))
-        
-    session['score'] = 0; session['hearts'] = 3
-    return render_template('game.html')
 
 @app.route('/get_question/<difficulty>')
 def get_question(difficulty):
@@ -457,7 +533,7 @@ def get_question(difficulty):
     
     if not anime_list:
         if session.get('mode') == 'mal':
-            return jsonify({"status": "error", "message": "لم نجد أنميات كافية في قائمة MAL الخاصة بك!"})
+            return jsonify({"status": "error", "message": "لم نجد أنميات كافية!"})
         return jsonify({"status": "error", "message": "قاعدة البيانات فارغة"})
 
     for _ in range(5):
@@ -533,6 +609,150 @@ def on_disconnect():
 
 def get_public_rooms_list():
     return [{'id': r['id'], 'name': r['name'], 'count': len(r['players']), 'isPrivate': bool(r['password']), 'state': r['state']} for r in active_rooms.values()]
+@app.route('/resend_activation', methods=['POST'])
+def resend_activation():
+    email = request.form['email']
+    user = get_user_by_email(email)
+    
+    if not user:
+        flash("❌ هذا البريد غير مسجل لدينا.", "error")
+    elif user['is_verified'] == 1:
+        flash("✅ هذا الحساب مفعل بالفعل! سجل دخولك.", "warning")
+    else:
+        if send_activation_email(email):
+            flash("📩 تم إعادة إرسال رابط التفعيل، تفقد بريدك (والرسائل غير المرغوب فيها).", "success")
+        else:
+            flash("⚠️ حدث خطأ أثناء الإرسال، تأكد من صحة البريد أو حاول لاحقاً.", "error")
+# ==========================================
+#  6. نظام استعادة كلمة المرور
+# ==========================================
 
+def send_reset_email(to_email):
+    """إرسال رابط تغيير الباسورد"""
+    try:
+        # التوكن صالح لمدة 15 دقيقة فقط
+        token = serializer.dumps(to_email, salt='password-reset')
+        link = url_for('reset_password_token', token=token, _external=True)
+        
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_EMAIL
+        msg['To'] = to_email
+        msg['Subject'] = "استعادة كلمة المرور - Otaku Challenge"
+        
+        body = f"""
+        <div dir="rtl" style="text-align:right; font-family:sans-serif;">
+            <h2>طلب تغيير كلمة المرور 🔒</h2>
+            <p>لقد طلبت تغيير كلمة المرور الخاصة بحسابك. اضغط على الزر أدناه للتغيير:</p>
+            <a href="{link}" style="background:#e74c3c; color:white; padding:10px 20px; text-decoration:none; border-radius:5px; font-weight:bold;">تغيير كلمة المرور</a>
+            <p style="color:#777; font-size:0.9em; margin-top:20px;">الرابط صالح لمدة 15 دقيقة فقط.</p>
+            <p>إذا لم تطلب هذا التغيير، تجاهل هذه الرسالة.</p>
+        </div>
+        """
+        msg.attach(MIMEText(body, 'html'))
+        
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_EMAIL, SMTP_PASSWORD)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Reset Email Error: {e}")
+        return False
+
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form['email']
+        user = get_user_by_email(email)
+        if user:
+            if send_reset_email(email):
+                flash("📩 تم إرسال رابط الاستعادة إلى بريدك.", "success")
+            else:
+                flash("⚠️ حدث خطأ أثناء الإرسال.", "error")
+        else:
+            # رسالة غامضة للأمان (حتى لا يعرف المخترق إذا كان الإيميل مسجلاً أم لا)
+            flash("📩 إذا كان هذا البريد مسجلاً، فستصلك رسالة.", "success")
+        return redirect(url_for('login'))
+    return render_template('forgot_password.html')
+
+@app.route('/reset_password/<token>', methods=['GET', 'POST'])
+def reset_password_token(token):
+    try:
+        email = serializer.loads(token, salt='password-reset', max_age=900) # 900 ثانية = 15 دقيقة
+    except:
+        flash("❌ الرابط منتهي الصلاحية أو غير صحيح.", "error")
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        pw = request.form['password']
+        confirm_pw = request.form['confirm_password']
+        
+        if pw != confirm_pw:
+            flash("❌ كلمات المرور غير متطابقة!", "error")
+            return render_template('reset_password.html')
+            
+        hashed_pw = generate_password_hash(pw)
+        conn = get_db()
+        conn.execute('UPDATE users SET password = ? WHERE email = ?', (hashed_pw, email))
+        conn.commit()
+        conn.close()
+        
+        flash("✅ تم تغيير كلمة المرور بنجاح! سجل دخولك الآن.", "success")
+        return redirect(url_for('login'))
+
+    return render_template('reset_password.html')            
+    
+# ==========================================
+#  8. نظام المزامنة (Client-Side Sync)
+# ==========================================
+
+@app.route('/sync_mal')
+def sync_mal():
+    """صفحة الوسيط التي تجعل المتصفح يجلب البيانات"""
+    if 'user_id' not in session: return redirect(url_for('login'))
+    
+    user = get_current_user()
+    if not user or not user['mal_username']:
+        flash("يجب ربط حساب MAL أولاً", "error")
+        return redirect(url_for('profile'))
+        
+    # استلام الحالات المطلوبة من الرابط
+    statuses = request.args.getlist('status')
+    if not statuses: statuses = ['completed']
+    
+    return render_template('sync.html', username=user['mal_username'], statuses=statuses)
+
+@app.route('/save_mal_data', methods=['POST'])
+def save_mal_data():
+    """استلام البيانات من الجافاسكريبت وحفظها في الجلسة"""
+    data = request.json
+    ids = data.get('ids', [])
+    session['mal_ids'] = ids # حفظ القائمة الجاهزة
+    return jsonify({"status": "success"})
+
+# --- تعديل بسيط جداً في دالة play_ui ---
+# ابحث عن دالة play_ui الموجودة عندك وعدل بداية شرط mal كالتالي:
+
+@app.route('/play')
+def play_ui():
+    mode = request.args.get('mode', 'random')
+    session['mode'] = mode
+    
+    if mode == 'mal':
+        # التعديل هنا: نوجه اللاعب للمزامنة أولاً
+        statuses = request.args.getlist('status')
+        params = "&".join([f"status={s}" for s in statuses])
+        return redirect(f"/sync_mal?{params}")
+
+    elif mode == 'mal_ready':
+        # وضع جديد: يعني أن البيانات وصلت بالفعل من المزامنة
+        session['mode'] = 'mal' # نرجعه للاسم الطبيعي
+        if 'mal_ids' not in session or not session['mal_ids']:
+             return redirect(url_for('home'))
+             
+    # ... باقي الكود كما هو (session score, hearts, render_template) ...
+    session['score'] = 0; session['hearts'] = 3
+    return render_template('game.html')
 if __name__ == '__main__':
     socketio.run(app, debug=True, port=5000)

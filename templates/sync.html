@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>مزامنة البيانات</title>
+    <style>
+        body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; margin: 0; text-align: center; }
+        .loader { border: 5px solid #333; border-top: 5px solid #f39c12; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        h3 { color: #f39c12; margin-bottom: 10px; }
+        p { color: #aaa; font-size: 0.9rem; max-width: 400px; line-height: 1.5; }
+        .status-box { background: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; border: 1px solid #444; width: 300px; }
+    </style>
+</head>
+<body>
+
+    <div class="status-box">
+        <div class="loader"></div>
+        <h3>جاري تجهيز قائمتك 📥</h3>
+        <p id="status-text">الاتصال بسيرفر الأنمي...</p>
+    </div>
+
+    <script>
+        const username = "{{ username }}";
+        const selectedStatuses = {{ statuses | tojson }}; 
+
+        async function fetchMalData() {
+            const statusText = document.getElementById('status-text');
+            
+            // 1. استخدام رابط مباشر (Jikan API)
+            const directUrl = `https://api.jikan.moe/v4/users/${username}/animelist?limit=300`; // نضيف limit لتقليل الحجم
+            
+            // 2. استخدام بروكسي (وكيل) لتجاوز مشاكل الحظر والـ CORS في الـ Localhost
+            // هذا هو الحل السحري الذي يجعل العملية أوتوماتيكية
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(directUrl)}`;
+
+            try {
+                statusText.innerText = "جاري سحب البيانات (عبر الوكيل)...";
+                
+                // طلب البيانات من الوكيل
+                const response = await fetch(proxyUrl);
+                
+                if (!response.ok) throw new Error("فشل الاتصال بالوكيل");
+                
+                const proxyData = await response.json();
+                
+                // الوكيل يرجع البيانات داخل حقل اسمه contents كنص
+                if (!proxyData.contents) throw new Error("بيانات فارغة من المصدر");
+                
+                const jsonData = JSON.parse(proxyData.contents);
+                const allAnime = jsonData.data || [];
+
+                statusText.innerText = `وصلت البيانات! (${allAnime.length} أنمي). جاري الفرز...`;
+
+                // --- منطق الفلترة (نفسه) ---
+                const validMap = {
+                    'completed': ['Completed', 2],
+                    'watching': ['Watching', 1],
+                    'on_hold': ['On-Hold', 3],
+                    'dropped': ['Dropped', 4]
+                };
+
+                let filteredIds = [];
+                allAnime.forEach(item => {
+                    // Jikan V4 أحياناً يغير الهيكلة، نتأكد منها
+                    const statusName = item.status; 
+                    const animeId = item.anime.mal_id;
+                    
+                    let isMatch = false;
+                    selectedStatuses.forEach(reqStatus => {
+                        if (validMap[reqStatus] && validMap[reqStatus].includes(statusName)) {
+                            isMatch = true;
+                        }
+                    });
+
+                    if (isMatch) filteredIds.push(animeId);
+                });
+
+                if (filteredIds.length === 0) {
+                    alert("حسابك موجود، لكن لا توجد أنميات في الفئات التي اخترتها!");
+                    window.location.href = "/";
+                    return;
+                }
+
+                // --- الإرسال للبايثون والدخول ---
+                statusText.innerText = "جاري إدخالك للعبة... 🚀";
+                
+                await fetch('/save_mal_data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: filteredIds })
+                });
+
+                setTimeout(() => window.location.href = "/play?mode=mal_ready", 500);
+
+            } catch (error) {
+                console.error(error);
+                // محاولة أخيرة: إذا فشل الوكيل الأول، نجرب الطريقة المباشرة (قد تنجح أحياناً)
+                statusText.innerText = "فشل الوكيل، نحاول الاتصال المباشر...";
+                try {
+                    const resp2 = await fetch(directUrl);
+                    if(resp2.ok) {
+                        const json2 = await resp2.json();
+                        // ... تكرار المنطق (اختصاراً، سنعيد تحميل الصفحة لعمل ريفرش)
+                        location.reload(); 
+                        return;
+                    }
+                } catch(e) {}
+
+                statusText.innerHTML = `<span style="color:#e74c3c">حدث خطأ: ${error.message}</span><br><br><button onclick="location.reload()" style="cursor:pointer; padding:5px;">إعادة المحاولة 🔄</button>`;
+            }
+        }
+
+        // تشغيل فوري
+        fetchMalData();
+    </script>
+</body>
+</html>

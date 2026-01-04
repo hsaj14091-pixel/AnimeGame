@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>الملف الشخصي</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; min-height: 100vh; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #1a1a1a, #2c3e50); font-family: sans-serif; color: white; padding: 20px; }
+        .container { width: 100%; max-width: 800px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .box { background: rgba(255, 255, 255, 0.1); padding: 30px; border-radius: 15px; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); }
+        h2 { margin-bottom: 20px; color: #f39c12; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        
+        label { display: block; margin-bottom: 5px; color: #ccc; font-size: 0.9rem; }
+        input { width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 5px; border: none; background: rgba(0,0,0,0.3); color: white; outline: none; box-sizing: border-box; }
+        input:focus { border: 1px solid #f39c12; }
+        
+        button { width: 100%; padding: 10px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.3s; color: white; margin-top: 5px; }
+        .btn-save { background-color: #2ecc71; } .btn-save:hover { background-color: #27ae60; }
+        .btn-pass { background-color: #e74c3c; } .btn-pass:hover { background-color: #c0392b; }
+        .btn-home { background-color: #3498db; margin-top: 20px; }
+        
+        .msg { padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 0.9rem; grid-column: span 2; text-align: center; }
+        .msg-success { background: rgba(46, 204, 113, 0.3); color: #abebc6; border: 1px solid #2ecc71; }
+        .msg-error { background: rgba(231, 76, 60, 0.3); color: #ffadad; border: 1px solid #e74c3c; }
+
+        @media (max-width: 700px) { .container { grid-template-columns: 1fr; } .msg { grid-column: span 1; } }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="msg msg-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="box">
+            <h2>👤 بياناتي</h2>
+            <form action="/update_profile" method="POST">
+                <label>اسم المستخدم (اللقب)</label>
+                <input type="text" name="username" value="{{ user['username'] }}" required>
+                
+                <label>البريد الإلكتروني (لا يمكن تغييره)</label>
+                <input type="email" value="{{ user['email'] }}" disabled style="opacity: 0.5; cursor: not-allowed;">
+                
+                <label>حساب MyAnimeList (MAL)</label>
+                <input type="text" name="mal_username" value="{{ user['mal_username'] or '' }}" placeholder="أدخل اسم حسابك في MAL">
+                
+                <button type="submit" class="btn-save">حفظ التغييرات 💾</button>
+            </form>
+        </div>
+
+        <div class="box">
+            <h2>🔑 تغيير كلمة المرور</h2>
+            <form action="/change_password" method="POST">
+                <label>كلمة المرور الحالية (للأمان)</label>
+                <input type="password" name="current_password" required placeholder="أدخل كلمة مرورك الحالية">
+                
+                <label>كلمة المرور الجديدة</label>
+                <input type="password" name="new_password" required placeholder="********">
+                
+                <label>تأكيد الجديدة</label>
+                <input type="password" name="confirm_password" required placeholder="********">
+                
+                <button type="submit" class="btn-pass">تحديث كلمة المرور 🔒</button>
+            </form>
+        </div>
+
+        <a href="/" style="grid-column: span 2; text-decoration: none;">
+            <button type="button" class="btn-home">العودة للرئيسية 🏠</button>
+        </a>
+
+    </div>
+
+</body>
+</html>

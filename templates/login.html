@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>تسجيل الدخول</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; min-height: 100vh; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #1a1a1a, #2c3e50); font-family: sans-serif; color: white; }
+        .form-container { background: rgba(255, 255, 255, 0.1); padding: 40px; border-radius: 15px; width: 350px; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); text-align: center; }
+        h2 { margin-bottom: 20px; color: #f39c12; }
+        input { width: 90%; padding: 12px; margin: 10px 0; border-radius: 5px; border: none; background: rgba(0,0,0,0.3); color: white; outline: none; }
+        input:focus { border: 1px solid #f39c12; }
+        button { width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 5px; background-color: #f39c12; color: white; font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.3s; }
+        button:hover { background-color: #e67e22; transform: translateY(-2px); }
+        
+        .secondary-link { color: #ccc; text-decoration: none; font-size: 0.9em; display: block; margin-top: 15px; }
+        .secondary-link:hover { color: white; }
+
+        /* تنسيق قسم إعادة الإرسال */
+        .resend-box { margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; }
+        .resend-btn { background: transparent; border: 1px solid #aaa; color: #aaa; padding: 8px; font-size: 0.9rem; margin-top: 5px; }
+        .resend-btn:hover { background: rgba(255,255,255,0.1); color: white; border-color: white; }
+
+        .msg { padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 0.9rem; text-align: center; }
+        .msg-error { background: rgba(231, 76, 60, 0.3); color: #ffadad; border: 1px solid #e74c3c; }
+        .msg-warning { background: rgba(241, 196, 15, 0.3); color: #f9e79f; border: 1px solid #f1c40f; }
+        .msg-success { background: rgba(46, 204, 113, 0.3); color: #abebc6; border: 1px solid #2ecc71; }
+    </style>
+</head>
+<body>
+
+    <div class="form-container">
+        <h2>تسجيل الدخول 🔐</h2>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="msg msg-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form action="/login" method="POST">
+            <input type="email" name="email" placeholder="البريد الإلكتروني" required>
+            <input type="password" name="password" placeholder="كلمة المرور" required>
+            <button type="submit">دخول</button>
+        </form>
+        <a href="/forgot_password" class="secondary-link" style="color: #f39c12; margin-bottom: 10px;">نسيت كلمة المرور؟</a>
+        <a href="/register" class="secondary-link">ليس لديك حساب؟ إنشاء حساب جديد</a>
+        <a href="/" class="secondary-link">العودة للرئيسية</a>
+
+        <div class="resend-box">
+            <p style="font-size:0.8rem; color:#aaa; margin-bottom:10px;">لم تصلك رسالة التفعيل؟</p>
+            <form action="/resend_activation" method="POST">
+                <input type="email" name="email" placeholder="أدخل بريدك لإعادة الإرسال" style="font-size:0.9rem; padding:8px;" required>
+                <button type="submit" class="resend-btn">إعادة إرسال الرابط 📩</button>
+            </form>
+        </div>
+    </div>
+
+</body>
+</html>

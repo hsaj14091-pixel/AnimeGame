@@ -2,5 +2,5 @@ Flask
 Flask-SocketIO
 requests
 captcha
-itsdangerous
-Werkzeug
+gunicorn
+eventlet

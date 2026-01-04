@@ -25,7 +25,13 @@
         }
         .subtitle { color: #888; font-size: 1.2rem; margin-top: 10px; }
 
+        .auth-bar { margin-bottom: 40px; background: rgba(255,255,255,0.05); padding: 15px 30px; border-radius: 50px; display: flex; gap: 20px; align-items: center; }
+        .btn-auth { color: white; text-decoration: none; font-weight: bold; padding: 8px 15px; border-radius: 20px; transition: 0.3s; }
+        .btn-login { background: #3498db; } .btn-register { background: #e67e22; }
+        
+        /* الشبكة الرئيسية */
         .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; max-width: 800px; }
+        
         .mode-card {
             background: var(--card); padding: 30px; border-radius: 20px;
             cursor: pointer; transition: 0.3s; border: 2px solid transparent;
@@ -42,13 +48,26 @@
         .mode-title { font-size: 1.5rem; font-weight: bold; display: block; margin-bottom: 10px; }
         .mode-desc { color: #aaa; font-size: 0.9rem; line-height: 1.5; }
 
-        .auth-bar { margin-bottom: 40px; background: rgba(255,255,255,0.05); padding: 15px 30px; border-radius: 50px; display: flex; gap: 20px; align-items: center; }
-        .btn-auth { color: white; text-decoration: none; font-weight: bold; padding: 8px 15px; border-radius: 20px; transition: 0.3s; }
-        .btn-login { background: #3498db; } .btn-register { background: #e67e22; }
-        .user-welcome { color: #f1c40f; font-weight: bold; font-size: 1.1rem; }
+        /* خيارات MAL (AMQ Style) */
+        .mal-options {
+            display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 15px;
+            background: rgba(0,0,0,0.2); padding: 10px; border-radius: 10px;
+        }
+        .mal-checkbox { display: none; }
+        .mal-label {
+            padding: 5px 12px; border-radius: 15px; border: 1px solid #aaa; 
+            color: #ccc; cursor: pointer; font-size: 0.8rem; transition: 0.2s;
+        }
+        .mal-checkbox:checked + .mal-label {
+            background: #2ecc71; color: #fff; border-color: #2ecc71; font-weight: bold;
+        }
+
+        .alert-box { grid-column: span 2; padding: 10px; border-radius: 10px; margin-bottom: 10px; }
+        .alert-error { background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; }
+        .alert-warning { background: rgba(241, 196, 15, 0.2); color: #f1c40f; border: 1px solid #f1c40f; }
 
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-        @media (max-width: 600px) { .menu-grid { grid-template-columns: 1fr; } .logo-text { font-size: 2.5rem; } }
+        @media (max-width: 600px) { .menu-grid { grid-template-columns: 1fr; } .alert-box { grid-column: span 1; } }
     </style>
 </head>
 <body>
@@ -58,9 +77,19 @@
         <div class="subtitle">أثبت أنك الهوكاغي القادم!</div>
     </div>
 
+    <div style="width: 100%; max-width: 800px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert-box alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
     <div class="auth-bar">
         {% if user %}
-            <span class="user-welcome">مرحباً، {{ user['username'] }} 👋</span>
+            <span>مرحباً، <b>{{ user['username'] }}</b> 👋</span>
             {% if user['mal_username'] %}
                 <span style="font-size:0.8rem; color:#2ecc71;">(MAL: {{ user['mal_username'] }})</span>
             {% endif %}
@@ -75,29 +104,62 @@
         <a href="/play?mode=random" class="mode-card card-solo">
             <span class="icon">🎲</span>
             <span class="mode-title">تحدي عشوائي</span>
-            <span class="mode-desc">أسئلة من جميع الأنميات في قاعدة البيانات. اختبر ثقافتك العامة.</span>
+            <span class="mode-desc">من كل بحر قطرة. أسئلة عامة من جميع الأنميات.</span>
         </a>
 
         {% if user and user['mal_username'] %}
-            <a href="/play?mode=mal" class="mode-card card-mal">
+            <div class="mode-card card-mal" onclick="playMal()">
                 <span class="icon">📺</span>
-                <span class="mode-title">من قائمتي (MyList)</span>
-                <span class="mode-desc">فقط أسئلة عن الأنميات التي شاهدتها (Completed/Watching). لا حرق!</span>
-            </a>
-        {% elif user %}
+                <span class="mode-title">قائمتي (My List)</span>
+                <span class="mode-desc">اختر الفئات التي تريد اللعب منها:</span>
+                
+                <div class="mal-options" onclick="event.stopPropagation()">
+                    <input type="checkbox" id="cat_comp" class="mal-checkbox" value="completed" checked>
+                    <label for="cat_comp" class="mal-label">مكتمل ✅</label>
+
+                    <input type="checkbox" id="cat_watch" class="mal-checkbox" value="watching">
+                    <label for="cat_watch" class="mal-label">أشاهده 👁️</label>
+
+                    <input type="checkbox" id="cat_hold" class="mal-checkbox" value="on_hold">
+                    <label for="cat_hold" class="mal-label">مؤجل ⏸️</label>
+                    
+                    <input type="checkbox" id="cat_drop" class="mal-checkbox" value="dropped">
+                    <label for="cat_drop" class="mal-label">مسحوب 🗑️</label>
+                </div>
+            </div>
+        {% else %}
             <div class="mode-card" style="opacity:0.5; cursor:not-allowed; border-color:#555">
                 <span class="icon">🔒</span>
-                <span class="mode-title">من قائمتي (MyList)</span>
-                <span class="mode-desc">يجب ربط حساب MyAnimeList أولاً لتفعيل هذا الوضع.</span>
+                <span class="mode-title">قائمتي (My List)</span>
+                <span class="mode-desc">يجب تسجيل الدخول وربط حساب MAL لتفعيل هذه الميزة.</span>
             </div>
         {% endif %}
 
         <a href="/multiplayer_lobby" class="mode-card card-multi">
             <span class="icon">⚔️</span>
-            <span class="mode-title">تحدي الأصدقاء</span>
-            <span class="mode-desc">أنشئ غرفة خاصة وادعُ أصدقاءك للمنافسة المباشرة.</span>
+            <span class="mode-title">أونلاين (Online)</span>
+            <span class="mode-desc">تحدي الأصدقاء في غرف خاصة.</span>
         </a>
     </div>
+
+    <script>
+        function playMal() {
+            // نجمع الخيارات التي حددها المستخدم
+            let statuses = [];
+            if(document.getElementById('cat_comp').checked) statuses.push('status=completed');
+            if(document.getElementById('cat_watch').checked) statuses.push('status=watching');
+            if(document.getElementById('cat_hold').checked) statuses.push('status=on_hold');
+            if(document.getElementById('cat_drop').checked) statuses.push('status=dropped');
+
+            if(statuses.length === 0) {
+                alert("يجب اختيار فئة واحدة على الأقل!");
+                return;
+            }
+
+            // توجيه اللاعب للعبة مع الخيارات
+            window.location.href = "/play?mode=mal&" + statuses.join("&");
+        }
+    </script>
 
 </body>
 </html>

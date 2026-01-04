@@ -98,23 +98,62 @@ def get_current_user():
 # ==========================================
 #  2. منطق جلب قائمة MAL (نظام AMQ)
 # ==========================================
-def fetch_mal_list(username):
-    url = f"https://api.jikan.moe/v4/users/{username}/animelist?status=completed&limit=300"
-    try:
-        resp = requests.get(url, timeout=5)
-        if resp.status_code == 200:
-            return [item['anime']['mal_id'] for item in resp.json()['data']]
-    except: return []
-    return []
+# ==========================================
+#  تحديث دالة جلب القائمة (لتقبل خيارات متعددة)
+# ==========================================
+def fetch_mal_list(username, statuses=['completed']):
+    """تجلب الأنميات بناءً على الحالات التي اختارها اللاعب"""
+    all_ids = []
+    
+    # مسميات Jikan API: watching, completed, on_hold, dropped, plan_to_watch
+    # نحن سنمر على كل حالة اختارها اللاعب ونجلب قائمتها
+    for status in statuses:
+        try:
+            # نجلب 200 أنمي كحد أقصى لكل حالة لتسريع العملية
+            url = f"https://api.jikan.moe/v4/users/{username}/animelist?status={status}&limit=200"
+            resp = requests.get(url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()['data']
+                ids = [item['anime']['mal_id'] for item in data]
+                all_ids.extend(ids)
+        except Exception as e:
+            print(f"Error fetching {status}: {e}")
+            continue
+            
+    # إزالة التكرار (للاحتياط) وإرجاع القائمة
+    return list(set(all_ids))
 
-# دالة مساعدة لجلب بيانات API
-def get_data_from_api(endpoint, params=None):
-    if params is None: params = {}
-    try:
-        resp = requests.get(f"https://api.jikan.moe/v4/{endpoint}", params=params, timeout=3)
-        if resp.status_code == 200: return resp.json()['data']
-    except: pass
-    return []
+# ==========================================
+#  تحديث مسار اللعب (ليقرأ الاختيارات)
+# ==========================================
+@app.route('/play')
+def play_ui():
+    mode = request.args.get('mode', 'random')
+    session['mode'] = mode
+    
+    # إذا اختار وضع MAL
+    if mode == 'mal':
+        # 1. التحقق من ربط الحساب
+        user = get_current_user()
+        if not user or not user['mal_username']:
+            flash("يجب ربط حساب MAL أولاً لتفعيل هذا الوضع", "error")
+            return redirect(url_for('home'))
+
+        # 2. معرفة ماذا اختار اللاعب (completed, watching, etc)
+        # نأخذ الخيارات من الرابط، إذا لم يختر شيئاً نعتبرها completed افتراضياً
+        selected_statuses = request.args.getlist('status')
+        if not selected_statuses: selected_statuses = ['completed']
+        
+        # 3. جلب القائمة وتخزينها
+        # ملاحظة: هذا قد يأخذ ثوانٍ بسيطة
+        session['mal_ids'] = fetch_mal_list(user['mal_username'], selected_statuses)
+        
+        if not session['mal_ids']:
+            flash("لم نجد أنميات في الفئات التي اخترتها!", "warning")
+            return redirect(url_for('home'))
+            
+    session['score'] = 0; session['hearts'] = 3
+    return render_template('game.html')
 
 # ==========================================
 #  3. جلب الأسئلة

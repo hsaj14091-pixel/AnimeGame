@@ -99,19 +99,19 @@ def get_current_user():
         conn.close()
         return user
     return None
+
+# --- دالة جلب البيانات من API الرسمي ---
 def fetch_mal_list(username):
-    """جلب القائمة باستخدام مفتاح MAL الرسمي"""
     url = f"https://api.myanimelist.net/v2/users/{username}/animelist"
     headers = { "X-MAL-CLIENT-ID": MAL_CLIENT_ID }
     params = { "status": "completed", "limit": 1000, "fields": "id,title" }
-
     try:
         response = requests.get(url, headers=headers, params=params, timeout=10)
         if response.status_code == 200:
             data = response.json().get('data', [])
             return [node['node']['id'] for node in data]
-    except Exception as e:
-        print(f"Error: {e}")
+    except:
+        pass
     return []
 def get_data_from_api(endpoint, params=None):
     """دالة مساعدة لجلب البيانات من Jikan للأشياء الفرعية"""
@@ -692,30 +692,25 @@ def play_ui():
     mode = request.args.get('mode', 'random')
     session['mode'] = mode
     
-    # --- التغيير الجذري هنا ---
+    # الكود الجديد الذي يمنع ظهور صفحة الانتظار
     if mode == 'mal':
         user = get_current_user()
-        # 1. التأكد أن المستخدم مسجل ومعه اسم MAL
         if not user or not user['mal_username']:
             flash("يجب ربط حساب MAL أولاً", "error")
             return redirect(url_for('profile'))
             
-        # 2. استخدام دالة المفتاح الرسمي (التي وضعناها في الأعلى)
-        # لاحظ: لا يوجد توجيه لصفحة sync_mal هنا أبداً
+        # استخدام الدالة الرسمية مباشرة (بدون توجيه لصفحة sync)
         ids = fetch_mal_list(user['mal_username'])
         
         if ids:
             session['mal_ids'] = ids
         else:
-            # في حال كانت القائمة فارغة فعلاً أو خاصة
-            flash("لم نتمكن من جلب القائمة، سنستخدم العشوائي.", "warning")
+            flash("لم نتمكن من جلب القائمة، سنستخدم الأسئلة العشوائية.", "warning")
             session['mode'] = 'random'
 
     session['score'] = 0
     session['hearts'] = 3
     return render_template('game.html')
-# --- نهاية الملف الصحيحة ---
-
 # هذا الكود ضروري لتشغيل السيرفر
 if __name__ == '__main__':
     # تأكد من أن debug=True لترت الأخطاء، والمنفذ 5000

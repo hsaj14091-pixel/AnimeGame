@@ -692,22 +692,31 @@ def play_ui():
     mode = request.args.get('mode', 'random')
     session['mode'] = mode
     
-    # الوضع الجديد: استخدام المفتاح الرسمي مباشرة
+    # --- التغيير الجذري هنا ---
     if mode == 'mal':
         user = get_current_user()
+        # 1. التأكد أن المستخدم مسجل ومعه اسم MAL
         if not user or not user['mal_username']:
             flash("يجب ربط حساب MAL أولاً", "error")
             return redirect(url_for('profile'))
             
-        # استخدام الدالة الجديدة التي أضفناها
+        # 2. استخدام دالة المفتاح الرسمي (التي وضعناها في الأعلى)
+        # لاحظ: لا يوجد توجيه لصفحة sync_mal هنا أبداً
         ids = fetch_mal_list(user['mal_username'])
         
         if ids:
             session['mal_ids'] = ids
         else:
-            flash("لم نتمكن من جلب القائمة (تأكد أنها عامة Public) - سنستخدم العشوائي مؤقتاً", "warning")
+            # في حال كانت القائمة فارغة فعلاً أو خاصة
+            flash("لم نتمكن من جلب القائمة، سنستخدم العشوائي.", "warning")
             session['mode'] = 'random'
 
     session['score'] = 0
     session['hearts'] = 3
     return render_template('game.html')
+# --- نهاية الملف الصحيحة ---
+
+# هذا الكود ضروري لتشغيل السيرفر
+if __name__ == '__main__':
+    # تأكد من أن debug=True لترت الأخطاء، والمنفذ 5000
+    socketio.run(app, debug=True, port=5000)

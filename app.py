@@ -2,7 +2,7 @@ from flask import Flask, render_template, session, request, jsonify, redirect, u
 from flask_socketio import SocketIO, join_room, emit
 import sqlite3
 import random
-import cloudscraper
+
 import requests
 import json
 import urllib.request
@@ -102,79 +102,18 @@ def get_current_user():
 def get_data_from_api(endpoint, params=None):
     """دالة مساعدة لجلب البيانات من Jikan للأشياء الفرعية"""
     url = f"https://api.jikan.moe/v4/{endpoint}"
+    # نستخدم ترويسة متصفح لتقليل احتمالية الحظر
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
     try:
-        # نستخدم cloudscraper هنا أيضاً لتجنب الحظر قدر الإمكان
-        scraper = cloudscraper.create_scraper() 
-        resp = scraper.get(url, params=params, timeout=5)
+        resp = requests.get(url, params=params, headers=headers, timeout=5)
         if resp.status_code == 200:
             return resp.json().get('data', [])
     except Exception as e:
         print(f"API Error ({endpoint}): {e}")
     return []
-# ==========================================
-#  2. منطق جلب قائمة MAL (نظام AMQ المطور)
-# ==========================================
-def fetch_mal_list(username, statuses=['completed']):
-    """
-    تستخدم cloudscraper لكسر حماية Cloudflare وتجاوز الحظر
-    """
-    username = username.strip()
-    all_ids = []
-    print(f"--- 🔓 تشغيل كاسر الحماية (CloudScraper) للمقاتل: {username} ---")
 
-    # إعداد الكاسر (يحاكي أحدث متصفح كروم)
-    scraper = cloudscraper.create_scraper(
-        browser={
-            'browser': 'chrome',
-            'platform': 'windows',
-            'desktop': True
-        }
-    )
-
-    # الرابط الخام
-    url = f"https://api.jikan.moe/v4/users/{username}/animelist"
-
-    try:
-        # الطلب باستخدام Scraper بدلاً من requests
-        resp = scraper.get(url, timeout=15)
-        
-        if resp.status_code == 200:
-            data = resp.json().get('data', [])
-            print(f"✅ تم الاختراق بنجاح! السيرفر سلمنا {len(data)} أنمي.")
-
-            # خريطة الحالات
-            target_map = {
-                'completed': [2, 'Completed', 'completed'],
-                'watching': [1, 'Watching', 'watching'],
-                'on_hold': [3, 'On-Hold', 'on_hold'],
-                'dropped': [4, 'Dropped', 'dropped']
-            }
-
-            for item in data:
-                anime_status = item.get('status')
-                anime_id = item['anime']['mal_id']
-                
-                is_match = False
-                for desired_status in statuses:
-                    valid_values = target_map.get(desired_status, [])
-                    if anime_status in valid_values:
-                        is_match = True
-                        break
-                
-                if is_match:
-                    all_ids.append(anime_id)
-            
-            print(f"🎯 بعد الفرز: {len(all_ids)} أنمي جاهز.")
-
-        else:
-            print(f"❌ فشل السكريبر (الرمز {resp.status_code}).")
-            # إذا فشل هذا أيضاً، فالخيار الوحيد المتبقي هو جلب البيانات عبر الجافاسكريبت (من متصفح اللاعب)
-            # ولكن Cloudscraper ينجح في 99% من الحالات.
-
-    except Exception as e:
-        print(f"🔥 خطأ في السكريبر: {e}")
-
-    return list(set(all_ids))
 # ==========================================
 #  3. جلب الأسئلة
 # ==========================================

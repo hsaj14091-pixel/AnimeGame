@@ -149,22 +149,26 @@
     </div>
 
     <script>
-        function playMal() {
-            let statuses = [];
-            if(document.getElementById('cat_comp').checked) statuses.push('status=completed');
-            if(document.getElementById('cat_watch').checked) statuses.push('status=watching');
-            if(document.getElementById('cat_hold').checked) statuses.push('status=on_hold');
-            if(document.getElementById('cat_drop').checked) statuses.push('status=dropped');
+    function playMal() {
+        // 1. تجميع الخيارات التي حددها المستخدم
+        let params = new URLSearchParams();
+        params.append('mode', 'mal'); // نحدد أن الوضع هو mal
 
-            if(statuses.length === 0) {
-                alert("يجب اختيار فئة واحدة على الأقل!");
-                return;
-            }
+        if(document.getElementById('cat_comp').checked) params.append('status', 'completed');
+        if(document.getElementById('cat_watch').checked) params.append('status', 'watching');
+        if(document.getElementById('cat_hold').checked) params.append('status', 'on_hold');
+        if(document.getElementById('cat_drop').checked) params.append('status', 'dropped');
 
-            // نرسل اللاعب إلى صفحة المزامنة الجديدة
-            window.location.href = "/sync_mal?" + statuses.join("&");
+        // التحقق من اختيار حالة واحدة على الأقل
+        if(!params.has('status')) {
+            alert("يجب اختيار فئة واحدة على الأقل!");
+            return;
         }
-    </script>
+
+        // ✅ التوجيه الصحيح: نذهب مباشرة لصفحة اللعب في السيرفر مع المعاملات
+        window.location.href = "/play?" + params.toString();
+    }
+</script>
 
 </body>
 </html>

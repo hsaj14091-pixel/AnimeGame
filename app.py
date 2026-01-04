@@ -100,34 +100,32 @@ def get_current_user():
         return user
     return None
 
-# --- دالة جلب البيانات من API الرسمي ---
-def fetch_mal_list(username):
-    url = f"https://api.myanimelist.net/v2/users/{username}/animelist"
+# --- تحديث دالة الجلب لدعم تعدد الحالات ---
+def fetch_mal_list(username, statuses=None):
+    # إذا لم يتم تحديد حالات، نفترض المكتمل فقط
+    if not statuses:
+        statuses = ['completed']
+        
+    all_ids = []
     headers = { "X-MAL-CLIENT-ID": MAL_CLIENT_ID }
-    params = { "status": "completed", "limit": 1000, "fields": "id,title" }
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-        if response.status_code == 200:
-            data = response.json().get('data', [])
-            return [node['node']['id'] for node in data]
-    except:
-        pass
-    return []
-def get_data_from_api(endpoint, params=None):
-    """دالة مساعدة لجلب البيانات من Jikan للأشياء الفرعية"""
-    url = f"https://api.jikan.moe/v4/{endpoint}"
-    # نستخدم ترويسة متصفح لتقليل احتمالية الحظر
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-    try:
-        resp = requests.get(url, params=params, headers=headers, timeout=5)
-        if resp.status_code == 200:
-            return resp.json().get('data', [])
-    except Exception as e:
-        print(f"API Error ({endpoint}): {e}")
-    return []
-
+    
+    # MAL API لا يقبل عدة حالات في طلب واحد، لذا نطلب كل حالة بمفردها
+    for status in statuses:
+        url = f"https://api.myanimelist.net/v2/users/{username}/animelist"
+        # نستخدم الحالة الحالية في التكرار (Loop)
+        params = { "status": status, "limit": 1000, "fields": "id" }
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json().get('data', [])
+                # إضافة الأيديات للقائمة الكلية
+                all_ids.extend([node['node']['id'] for node in data])
+        except Exception as e:
+            print(f"Error fetching {status}: {e}")
+            continue
+            
+    # إزالة التكرار (استخدام set) وإرجاع القائمة
+    return list(set(all_ids))
 # ==========================================
 #  3. جلب الأسئلة
 # ==========================================
@@ -660,29 +658,9 @@ def reset_password_token(token):
 #  8. نظام المزامنة (Client-Side Sync)
 # ==========================================
 
-@app.route('/sync_mal')
-def sync_mal():
-    """صفحة الوسيط التي تجعل المتصفح يجلب البيانات"""
-    if 'user_id' not in session: return redirect(url_for('login'))
-    
-    user = get_current_user()
-    if not user or not user['mal_username']:
-        flash("يجب ربط حساب MAL أولاً", "error")
-        return redirect(url_for('profile'))
-        
-    # استلام الحالات المطلوبة من الرابط
-    statuses = request.args.getlist('status')
-    if not statuses: statuses = ['completed']
-    
-    return render_template('sync.html', username=user['mal_username'], statuses=statuses)
 
-@app.route('/save_mal_data', methods=['POST'])
-def save_mal_data():
-    """استلام البيانات من الجافاسكريبت وحفظها في الجلسة"""
-    data = request.json
-    ids = data.get('ids', [])
-    session['mal_ids'] = ids # حفظ القائمة الجاهزة
-    return jsonify({"status": "success"})
+
+
 
 # --- تعديل بسيط جداً في دالة play_ui ---
 # ابحث عن دالة play_ui الموجودة عندك وعدل بداية شرط mal كالتالي:
@@ -692,28 +670,32 @@ def play_ui():
     mode = request.args.get('mode', 'random')
     session['mode'] = mode
     
-    # --- التعديل: الاتصال المباشر بـ MAL ---
     if mode == 'mal':
         user = get_current_user()
-        # التحقق من وجود المستخدم واسم MAL
         if not user or not user['mal_username']:
             flash("يجب ربط حساب MAL أولاً", "error")
             return redirect(url_for('profile'))
             
-        # استخدام الدالة الموجودة في كودك مسبقاً
-        ids = fetch_mal_list(user['mal_username'])
+        # 1. استقبال الحالات من الرابط (التي أرسلها الجافاسكريبت)
+        # الرابط يكون: /play?mode=mal&status=completed&status=watching
+        selected_statuses = request.args.getlist('status')
+        
+        # إذا لم يختر شيئاً، نفترض المكتمل
+        if not selected_statuses:
+            selected_statuses = ['completed']
+
+        # 2. الجلب المباشر باستخدام الدالة الجديدة
+        ids = fetch_mal_list(user['mal_username'], selected_statuses)
         
         if ids:
             session['mal_ids'] = ids
+            # حفظنا البيانات، الآن الصفحة ستعمل طبيعياً
         else:
-            flash("لم نتمكن من جلب القائمة (تأكد أنها عامة)، سنستخدم الأسئلة العشوائية.", "warning")
+            flash("لم نتمكن من جلب القائمة أو أنها فارغة، سنستخدم الأسئلة العشوائية.", "warning")
             session['mode'] = 'random'
 
-    # إعادة تعيين النقاط والقلوب (كما في كودك الأصلي)
     session['score'] = 0
     session['hearts'] = 3
-    
-    # الدخول للعبة مباشرة
     return render_template('game.html')
 if __name__ == '__main__':
     # تأكد من أن debug=True لترت الأخطاء، والمنفذ 5000

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>Game Over</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: white; text-align: center; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .container { background: #1e1e2e; padding: 40px; border-radius: 20px; box-shadow: 0 0 30px rgba(231, 76, 60, 0.4); border: 1px solid #e74c3c; max-width: 500px; width: 90%; }
+        h1 { color: #e74c3c; font-size: 3rem; margin: 0; text-transform: uppercase; letter-spacing: 5px; }
+        .score-box { background: #2c2c3e; margin: 30px 0; padding: 20px; border-radius: 15px; }
+        .score-val { font-size: 2.5rem; color: #f39c12; font-weight: bold; }
+        .title-val { font-size: 1.5rem; color: #2ecc71; margin-top: 10px; }
+        .btn { background: #f39c12; color: #121212; padding: 15px 40px; font-size: 1.2rem; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; transition: 0.2s; text-decoration: none; display: inline-block; margin-top: 10px; }
+        .btn:hover { background: #e67e22; transform: scale(1.05); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>خسرت!</h1>
+        <p>نفذت قلوبك، لكنك قاتلت بشرف.</p>
+        
+        <div class="score-box">
+            <div>نتيجتك النهائية</div>
+            <div class="score-val">{{ score }}</div>
+            <div class="title-val">اللقب: {{ title }}</div>
+        </div>
+
+        <a href="/" class="btn">العودة للرئيسية</a>
+        <br><br>
+        <a href="/play" style="color: #888; text-decoration: none;">لعب مرة أخرى مباشرة</a>
+    </div>
+
+    <script>
+        // تشغيل صوت الخسارة تلقائياً عند تحميل الصفحة
+        const soundGameOver = new Audio("{{ url_for('static', filename='sounds/gameover.mp3') }}");
+        soundGameOver.volume = 0.5;
+        soundGameOver.play().catch(e => console.log("Autoplay blocked"));
+    </script>
+</body>
+</html>

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>Otaku Challenge</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        :root { --bg: #121212; --card: #1e1e2e; --accent: #f39c12; --success: #2ecc71; --error: #e74c3c; --otaku: #8e44ad; --text: #fff; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); text-align: center; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 10px; overflow-x: hidden; }
+        .container { width: 100%; max-width: 600px; background: var(--card); padding: 30px; border-radius: 20px; box-shadow: 0 0 20px rgba(0,0,0,0.7); position: relative; min-height: 400px; display: flex; flex-direction: column; }
+        
+        .hud-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: #2c2c3e; padding: 10px 20px; border-radius: 15px; }
+        .hearts { color: var(--error); letter-spacing: 5px; }
+        .score { color: var(--accent); font-weight: bold; }
+
+        #difficulty-menu { display: flex; flex-direction: column; gap: 15px; flex-grow: 1; justify-content: center; }
+        .diff-btn { padding: 18px; border: none; border-radius: 15px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; color: white; display: flex; justify-content: space-between; align-items: center; }
+        .diff-btn:hover { transform: scale(1.02); }
+        .btn-easy { background: linear-gradient(45deg, #2ecc71, #27ae60); box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4); }
+        .btn-medium { background: linear-gradient(45deg, #f1c40f, #f39c12); box-shadow: 0 4px 15px rgba(243, 156, 18, 0.4); }
+        .btn-hard { background: linear-gradient(45deg, #e74c3c, #c0392b); box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4); }
+        .btn-otaku { background: linear-gradient(45deg, #8e44ad, #9b59b6); box-shadow: 0 4px 15px rgba(142, 68, 173, 0.4); border: 1px solid #fff; animation: pulse-purple 2s infinite; }
+        @keyframes pulse-purple { 0% { box-shadow: 0 0 0 0 rgba(142, 68, 173, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(142, 68, 173, 0); } 100% { box-shadow: 0 0 0 0 rgba(142, 68, 173, 0); } }
+        .points-hint { font-size: 0.9rem; opacity: 0.9; background: rgba(0,0,0,0.2); padding: 5px 10px; border-radius: 10px; }
+
+        #question-area { display: none; opacity: 0; transition: opacity 0.5s; }
+        #question-area.active { display: block; opacity: 1; }
+        
+        .timer-container { width: 100%; height: 6px; background: #333; border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+        .timer-bar { height: 100%; width: 100%; background: var(--accent); transition: width 0.1s linear; }
+        .question-text { color: var(--accent); font-size: 1.3rem; margin-bottom: 20px; }
+        .options-grid { display: grid; gap: 12px; }
+        .normal-btn { width: 100%; padding: 18px; background: #2c2c3e; color: white; border: 2px solid transparent; font-size: 1.1rem; cursor: pointer; border-radius: 12px; font-weight: 600; }
+        .normal-btn:hover { background: #3d3d55; border-color: var(--accent); }
+        .draggable-item { background: #2c2c3e; margin: 10px 0; padding: 15px; border-radius: 10px; cursor: grab; border-right: 5px solid var(--accent); display: flex; justify-content: space-between; }
+        .check-btn { background: var(--success); color: white; border: none; padding: 15px; border-radius: 50px; cursor: pointer; width: 100%; font-size: 1.2rem; margin-top: 20px; font-weight: bold; }
+        .btn-correct { background: var(--success) !important; color: white !important; transform: scale(1.05); }
+        .btn-wrong { background: var(--error) !important; opacity: 0.6; }
+        
+        .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:flex; justify-content:center; align-items:center; z-index:1000; opacity:0; pointer-events:none; transition:opacity 0.3s; }
+        .modal-overlay.show { opacity:1; pointer-events:auto; }
+        .modal-box { background:#2c2c3e; padding:40px; border-radius:20px; border:2px solid var(--error); text-align:center; transform:scale(0.8); transition:transform 0.3s; }
+        .modal-overlay.show .modal-box { transform:scale(1); }
+        .heart-icon { display: inline-block; transition: transform 0.2s; }
+
+        /* === (جديد) تصميم اللودر المتحرك === */
+        .loader { 
+            display: none; 
+            font-size: 1.5rem; 
+            color: var(--accent); 
+            margin: auto; 
+            font-weight: bold;
+        }
+        /* كود تحريك النقاط */
+        .loading-dots::after {
+            content: ' .';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="timeout-modal" class="modal-overlay">
+        <div class="modal-box">
+            <span style="font-size:4rem">⏰</span>
+            <p style="font-size:2rem; color:var(--error); font-weight:bold">انتهى الوقت!</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="hud-bar">
+            <div class="score">نقاط: <span id="score-val">{{ session.score }}</span></div>
+            <div class="hearts" id="hearts-container">
+                {% for i in range(session.hearts) %}<span class="heart-icon">❤️</span>{% endfor %}
+            </div>
+        </div>
+
+        <div id="difficulty-menu">
+            <h2 style="color:white; margin-bottom:10px">اختر مسارك:</h2>
+            <button class="diff-btn btn-easy" onclick="loadQuestion('easy')">
+                <span>سهل</span> <span class="points-hint">100-200 نقطة</span>
+            </button>
+            <button class="diff-btn btn-medium" onclick="loadQuestion('medium')">
+                <span>متوسط</span> <span class="points-hint">250-350 نقطة</span>
+            </button>
+            <button class="diff-btn btn-hard" onclick="loadQuestion('hard')">
+                <span>صعب</span> <span class="points-hint">400-500 نقطة</span>
+            </button>
+            <button class="diff-btn btn-otaku" onclick="loadQuestion('otaku')">
+                <span>😈 أوتاكو</span> <span class="points-hint">600+ نقطة</span>
+            </button>
+        </div>
+
+        <div id="loader" class="loader">
+            جاري تجهيز التحدي<span class="loading-dots"></span> 🍥
+        </div>
+
+        <div id="question-area">
+            <div class="timer-container"><div class="timer-bar" id="timer-bar"></div></div>
+            <h2 id="q-text" class="question-text"></h2>
+            <div id="dynamic-content"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = null;
+        let timerInterval;
+        let timeLeft = 0;
+        let isAnswered = false;
+        
+        const soundCorrect = new Audio("{{ url_for('static', filename='sounds/correct.mp3') }}");
+        const soundWrong = new Audio("{{ url_for('static', filename='sounds/wrong.mp3') }}");
+        const soundTimeout = new Audio("{{ url_for('static', filename='sounds/timeout.mp3') }}");
+        
+        soundCorrect.volume = 0.8;
+        soundWrong.volume = 0.6;
+        soundTimeout.volume = 0.7;
+
+        function loadQuestion(difficulty) {
+            document.getElementById('difficulty-menu').style.display = 'none';
+            document.getElementById('loader').style.display = 'block';
+
+            fetch(`/get_question/${difficulty}`)
+                .then(res => res.json())
+                .then(response => {
+                    document.getElementById('loader').style.display = 'none';
+                    if(response.status === 'gameover') {
+                        window.location.href = '/gameover';
+                        return;
+                    }
+                    if(response.status === 'success') {
+                        setupQuestion(response.data);
+                    } else {
+                         document.getElementById('difficulty-menu').style.display = 'flex';
+                         alert("لم نجد سؤالاً بهذه المواصفات الدقيقة، حاول مجدداً!");
+                    }
+                });
+        }
+
+        function setupQuestion(data) {
+            currentData = data;
+            isAnswered = false;
+            
+            const qArea = document.getElementById('question-area');
+            qArea.classList.add('active');
+            
+            document.getElementById('q-text').innerHTML = data.question;
+            const contentDiv = document.getElementById('dynamic-content');
+            contentDiv.innerHTML = ''; 
+
+            if (data.mode === 'sorting') {
+                let ul = document.createElement('ul');
+                ul.id = 'sortable-list';
+                ul.style.listStyle = 'none'; ul.style.padding = 0;
+                
+                data.drag_items.forEach(item => {
+                    ul.innerHTML += `
+                        <li class="draggable-item" data-id="${item.id}">
+                            <span>${item.text}</span> <span>☰</span>
+                        </li>`;
+                });
+                
+                contentDiv.appendChild(ul);
+                contentDiv.innerHTML += `<button class="check-btn" onclick="checkOrder()">تحقق ✅</button>`;
+                
+                new Sortable(document.getElementById('sortable-list'), { animation: 150 });
+
+            } else {
+                let grid = document.createElement('div');
+                grid.className = 'options-grid';
+                
+                data.options.forEach(opt => {
+                    let btn = document.createElement('button');
+                    btn.className = 'normal-btn';
+                    btn.innerText = opt;
+                    btn.onclick = (e) => checkNormal(opt, e.target);
+                    grid.appendChild(btn);
+                });
+                contentDiv.appendChild(grid);
+            }
+
+            startTimer(25);
+        }
+
+        function startTimer(seconds) {
+            timeLeft = seconds;
+            const bar = document.getElementById('timer-bar');
+            bar.style.width = '100%';
+            bar.style.background = 'var(--accent)';
+            
+            if (timerInterval) clearInterval(timerInterval);
+            
+            timerInterval = setInterval(() => {
+                if(isAnswered) { clearInterval(timerInterval); return; }
+                
+                timeLeft -= 0.1;
+                let pct = (timeLeft / seconds) * 100;
+                bar.style.width = pct + '%';
+                
+                if(pct < 30) bar.style.background = 'var(--error)';
+                
+                if(timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    handleTimeUp();
+                }
+            }, 100);
+        }
+
+        function handleTimeUp() {
+            soundTimeout.play();
+            if(currentData.mode === 'text') highlightCorrectBtn(currentData.answer);
+            document.getElementById('timeout-modal').classList.add('show');
+            setTimeout(() => submitResult(false), 2500);
+        }
+
+        function checkNormal(selected, btn) {
+            if(isAnswered) return;
+            const correct = currentData.answer;
+            
+            if(selected === correct) {
+                btn.classList.add('btn-correct');
+                triggerSuccess();
+            } else {
+                btn.classList.add('btn-wrong');
+                highlightCorrectBtn(correct);
+                triggerFailure();
+            }
+        }
+
+        function checkOrder() {
+            if(isAnswered) return;
+            const correctOrder = JSON.parse(currentData.correct_order);
+            const items = document.querySelectorAll('.draggable-item');
+            let playerIds = Array.from(items).map(i => parseInt(i.getAttribute('data-id')));
+            
+            if(JSON.stringify(playerIds) === JSON.stringify(correctOrder)) {
+                triggerSuccess();
+            } else {
+                triggerFailure();
+            }
+        }
+
+        function highlightCorrectBtn(correctTxt) {
+            document.querySelectorAll('.normal-btn').forEach(btn => {
+                if(btn.innerText === correctTxt) btn.classList.add('btn-correct');
+            });
+        }
+
+        function submitResult(isCorrect) {
+            isAnswered = true;
+            clearInterval(timerInterval);
+            
+            fetch('/submit_answer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ correct: isCorrect, points: currentData.points })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'gameover') {
+                    window.location.href = '/gameover';
+                } else {
+                    updateStats(isCorrect);
+                    setTimeout(() => {
+                        resetInterface();
+                    }, 2000);
+                }
+            });
+        }
+
+        function updateStats(isCorrect) {
+            let scoreEl = document.getElementById('score-val');
+            if(isCorrect) {
+                let oldScore = parseInt(scoreEl.innerText);
+                scoreEl.innerText = oldScore + currentData.points;
+            } else {
+                let heartsContainer = document.getElementById('hearts-container');
+                if(heartsContainer.lastElementChild) {
+                    heartsContainer.removeChild(heartsContainer.lastElementChild);
+                }
+            }
+        }
+
+        function resetInterface() {
+            document.getElementById('question-area').classList.remove('active');
+            document.getElementById('timeout-modal').classList.remove('show');
+            document.getElementById('difficulty-menu').style.display = 'flex'; 
+        }
+
+        function triggerSuccess() {
+            soundCorrect.currentTime = 0; soundCorrect.play();
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            submitResult(true);
+        }
+
+        function triggerFailure() {
+            soundWrong.currentTime = 0; soundWrong.play();
+            document.querySelector('.container').classList.add('shake');
+            setTimeout(() => document.querySelector('.container').classList.remove('shake'), 500);
+            submitResult(false);
+        }
+    </script>
+</body>
+</html>

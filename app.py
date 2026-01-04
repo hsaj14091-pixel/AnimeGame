@@ -1,20 +1,313 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, session, request, jsonify, redirect, url_for
 import random
+import requests
+import json
 
 app = Flask(__name__)
+app.secret_key = 'Otaku_Math_Difficulty_2026'
 
-# --- بيانات وهمية للتجربة (سنستبدلها بـ API لاحقاً) ---
-dummy_question = {
-    "question": "ما هو الاستوديو المنتج لأنمي One Piece؟",
-    "image": "https://cdn.myanimelist.net/images/anime/6/73245l.jpg",
-    "options": ["Toei Animation", "MAPPA", "Madhouse", "Bones"],
-    "answer": "Toei Animation"
-}
+COMMON_STUDIOS = ["Toei Animation", "MAPPA", "Madhouse", "Bones", "Sunrise", "Pierrot", "A-1 Pictures", "Wit Studio", "Ufotable", "Studio Ghibli", "J.C.Staff"]
+
+# ==========================================
+#  أدوات مساعدة + منطق الصعوبة الرياضي
+# ==========================================
+def get_data_from_api(endpoint, params=None):
+    if params is None: params = {}
+    try:
+        url = f"https://api.jikan.moe/v4/{endpoint}"
+        resp = requests.get(url, params=params, timeout=4)
+        if resp.status_code == 200: return resp.json()['data']
+    except: pass
+    return []
+
+# --- دوال التقييم الجديدة ---
+def get_popularity_score(anime):
+    """تقييم شهرة الأنمي من 1 (مشهور) إلى 6 (مغمور)"""
+    pop = anime.get('popularity', 0)
+    if pop == 0: return 3 # افتراضي
+    if pop <= 100: return 1
+    if pop <= 300: return 2
+    if pop <= 700: return 3
+    if pop <= 1500: return 4
+    if pop <= 3000: return 5
+    return 6 # مغمور جداً (أوتاكو)
+
+def get_question_type_score(mode):
+    """تقييم نوع السؤال من 1 (سهل) إلى 6 (صعب)"""
+    # نحدد النقاط بناءً على نوع الـ ID أو الـ mode
+    scores = {
+        'tf': 1,         # صح أم خطأ
+        'char': 2,       # شخصية
+        'year': 3,       # سنة
+        'imposter': 4,   # دخيل
+        'link': 4,       # رابط
+        'studio': 5,     # استوديو
+        'sorting': 6     # ترتيب
+    }
+    return scores.get(mode, 3)
+
+def calculate_total_difficulty(q_data, anime_list):
+    """حساب المجموع النهائي للصعوبة (2 - 12)"""
+    # 1. تحديد نوع السؤال من الـ ID
+    q_id = q_data['id']
+    mode_key = 'tf' # افتراضي
+    
+    if 'sort' in q_data['mode']: mode_key = 'sorting' # الترتيب هو الأهم
+    elif 'imp' in q_id: mode_key = 'imposter'
+    elif 'link' in q_id: mode_key = 'link'
+    elif 'rev' in q_id or 'std' in q_id: mode_key = 'studio'
+    elif 'year' in q_id: mode_key = 'year'
+    elif 'char' in q_id: mode_key = 'char'
+    elif 'tf' in q_id: mode_key = 'tf'
+    
+    type_score = get_question_type_score(mode_key)
+    
+    # 2. تحديد شهرة الأنمي
+    # نأخذ أول أنمي في القائمة كعينة (لأن الأسئلة عادة تكون من نفس النطاق)
+    avg_pop_score = 0
+    valid_anime = [a for a in anime_list if a.get('popularity')]
+    if valid_anime:
+        target_anime = valid_anime[0]
+        avg_pop_score = get_popularity_score(target_anime)
+    else:
+        avg_pop_score = 3
+        
+    total = type_score + avg_pop_score
+    return total
+
+# ==========================================
+#  جميع مولدات الأسئلة (9 دوال - كاملة)
+# ==========================================
+
+# 1. الترتيب الزمني
+def generate_sort_year(anime_list):
+    candidates = [a for a in anime_list if a.get('year')]
+    if len(candidates) < 4: return None
+    selected = random.sample(candidates, 4)
+    sorted_items = sorted(selected, key=lambda x: x['year'])
+    correct_ids = [item['mal_id'] for item in sorted_items]
+    shuffled = selected[:]
+    random.shuffle(shuffled)
+    display_items = [{"id": i['mal_id'], "text": i.get('title_english') or i['title']} for i in shuffled]
+    return {
+        "mode": "sorting", "id": f"sort_year_{random.randint(1000,9999)}",
+        "question": "رتب الأنميات زمنياً من **الأقدم** (بالأعلى) إلى **الأحدث**:",
+        "drag_items": display_items, "correct_order": json.dumps(correct_ids)
+    }
+
+# 2. ترتيب التقييم
+def generate_sort_score(anime_list):
+    candidates = [a for a in anime_list if a.get('score')]
+    if len(candidates) < 4: return None
+    selected = random.sample(candidates, 4)
+    sorted_items = sorted(selected, key=lambda x: x['score'], reverse=True) 
+    correct_ids = [item['mal_id'] for item in sorted_items]
+    shuffled = selected[:]
+    random.shuffle(shuffled)
+    display_items = [{"id": i['mal_id'], "text": i.get('title_english') or i['title']} for i in shuffled]
+    return {
+        "mode": "sorting", "id": f"sort_score_{random.randint(1000,9999)}",
+        "question": "رتب الأنميات حسب **التقييم العالمي** من الأعلى (بالأعلى) للأقل:",
+        "drag_items": display_items, "correct_order": json.dumps(correct_ids)
+    }
+
+# 3. الدخيل
+def generate_imposter_question(anime_list):
+    target = random.choice(anime_list)
+    if not target.get('studios'): return None
+    studio_id = target['studios'][0]['mal_id']
+    studio_name = target['studios'][0]['name']
+    same = get_data_from_api("anime", params={"producers": studio_id, "limit": 3})
+    if not same or len(same) < 3: return None
+    group = [a.get('title_english') or a['title'] for a in random.sample(same, 3)]
+    imposter_cands = [a for a in anime_list if not a.get('studios') or a['studios'][0]['mal_id'] != studio_id]
+    if not imposter_cands: return None
+    imposter = random.choice(imposter_cands)
+    imposter_title = imposter.get('title_english') or imposter['title']
+    options = group + [imposter_title]
+    random.shuffle(options)
+    return {"mode": "text", "id": f"med_imp_{random.randint(1000,9999)}", "question": f"واحد فقط من هذه الأنميات **ليس** من إنتاج استوديو {studio_name}، من هو؟", "answer": imposter_title, "options": options}
+
+# 4. الرابط العجيب
+def generate_common_link(anime_list):
+    target = random.choice(anime_list)
+    chars = get_data_from_api(f"anime/{target['mal_id']}/characters")
+    if not chars or len(chars) < 3: return None
+    names = [c['character']['name'] for c in random.sample(chars, 3)]
+    names_str = " - ".join(names)
+    title = target.get('title_english') or target['title']
+    others = [a.get('title_english') or a['title'] for a in anime_list if a['mal_id'] != target['mal_id']]
+    if len(others) < 3: return None
+    return {"mode": "text", "id": f"med_link_{random.randint(1000,9999)}", "question": f"ما الأنمي الذي يجمع هذه الشخصيات؟<br><h3 style='color:#3498db'>{names_str}</h3>", "answer": title, "options": random.sample(others, 3) + [title]}
+
+# 5. الاستوديو العكسي
+def generate_reverse_studio(anime_list):
+    cands = [a for a in anime_list if a.get('studios')]
+    if not cands: return None
+    target = random.choice(cands)
+    studio = target['studios'][0]['name']
+    title = target.get('title_english') or target['title']
+    others = [a for a in anime_list if a != target and (not a.get('studios') or a['studios'][0]['name'] != studio)]
+    if len(others) < 3: return None
+    wrong = [a.get('title_english') or a['title'] for a in random.sample(others, 3)]
+    return {"mode": "text", "id": f"med_rev_{random.randint(1000,9999)}", "question": f"أي من هذه الأعمال من إنتاج **{studio}**؟", "answer": title, "options": wrong + [title]}
+
+# 6. الاستوديو الكلاسيكي
+def generate_classic_studio(anime_list):
+    cands = [a for a in anime_list if a.get('studios')]
+    if not cands: return None
+    target = random.choice(cands)
+    studio = target['studios'][0]['name']
+    title = target.get('title_english') or target['title']
+    wrong = random.sample([s for s in COMMON_STUDIOS if s != studio], 3)
+    return {"mode": "text", "id": f"easy_std_{random.randint(1000,9999)}", "question": f"ما هو استوديو إنتاج **{title}**؟", "answer": studio, "options": wrong + [studio]}
+
+# 7. السنة الكلاسيكية
+def generate_classic_year(anime_list):
+    cands = [a for a in anime_list if a.get('year')]
+    if not cands: return None
+    target = random.choice(cands)
+    year = target['year']
+    title = target.get('title_english') or target['title']
+    wrong = set()
+    while len(wrong) < 3:
+        fake = year + random.randint(-5, 5)
+        if fake != year: wrong.add(fake)
+    return {"mode": "text", "id": f"easy_year_{random.randint(1000,9999)}", "question": f"في أي سنة صدر **{title}**؟", "answer": str(year), "options": list(wrong) + [str(year)]}
+
+# 8. شخصية بسيطة
+def generate_simple_character(anime_list):
+    target = random.choice(anime_list)
+    chars = get_data_from_api(f"anime/{target['mal_id']}/characters")
+    if not chars: return None
+    pool = [c for c in chars if c['role'] == 'Supporting'] or chars
+    if not pool: return None
+    char_name = random.choice(pool)['character']['name']
+    title = target.get('title_english') or target['title']
+    others = [a.get('title_english') or a['title'] for a in anime_list if a['mal_id'] != target['mal_id']]
+    if len(others) < 3: return None
+    return {"mode": "text", "id": f"easy_char_{random.randint(1000,9999)}", "question": f"الشخصية **{char_name}** تظهر في أي أنمي؟", "answer": title, "options": random.sample(others, 3) + [title]}
+
+# 9. صح أم خطأ
+def generate_true_false(anime_list):
+    target = random.choice(anime_list)
+    title = target.get('title_english') or target['title']
+    is_truth = random.choice([True, False])
+    if target.get('year'):
+        year = target['year']
+        if is_truth:
+            q = f"أنمي **{title}** صدر عام {year}."
+            ans = "صح"
+        else:
+            fake = year + random.choice([-2, -1, 1, 2])
+            q = f"أنمي **{title}** صدر عام {fake}."
+            ans = "خطأ"
+        return {"mode": "text", "id": f"easy_tf_{random.randint(1000,9999)}", "question": f"صح أم خطأ؟<br>{q}", "answer": ans, "options": ["صح", "خطأ"]}
+    return None
+
+def generate_any_question(anime_list):
+    """دالة تختار مولداً عشوائياً من الـ 9 مولدات"""
+    generators = [
+        generate_sort_year, generate_sort_score, 
+        generate_imposter_question, generate_common_link, generate_reverse_studio,
+        generate_classic_studio, generate_classic_year, generate_simple_character, generate_true_false
+    ]
+    gen_func = random.choice(generators)
+    return gen_func(anime_list)
+
+# ==========================================
+#  المسارات (Routes)
+# ==========================================
 
 @app.route('/')
 def home():
-    # هنا نرسل البيانات (السؤال والصورة) إلى صفحة HTML
-    return render_template('index.html', data=dummy_question)
+    session.clear()
+    return render_template('home.html')
+
+@app.route('/play')
+def play_ui():
+    if 'score' not in session: session['score'] = 0
+    if 'hearts' not in session: session['hearts'] = 3
+    if session['hearts'] <= 0: return redirect(url_for('gameover'))
+    return render_template('game.html')
+
+@app.route('/get_question/<difficulty>')
+def get_question(difficulty):
+    """الخوارزمية الذكية: تختار سؤالاً يناسب الصعوبة المطلوبة"""
+    if session.get('hearts', 0) <= 0:
+        return jsonify({"status": "gameover"})
+
+    # إعدادات الصعوبة (النطاق المستهدف + نطاق البحث في الصفحات)
+    target_range = (2, 4) # افتراضي سهل
+    page_range = (1, 5)
+    
+    if difficulty == 'easy':
+        target_range = (2, 4)
+        page_range = (1, 3)    # أنميات مشهورة جداً
+    elif difficulty == 'medium':
+        target_range = (5, 7)
+        page_range = (3, 10)
+    elif difficulty == 'hard':
+        target_range = (8, 10)
+        page_range = (10, 20)
+    elif difficulty == 'otaku':
+        target_range = (11, 12)
+        page_range = (20, 30)  # أنميات مغمورة جداً
+
+    # نحاول 15 مرة للحصول على معادلة صحيحة
+    for _ in range(15):
+        try:
+            # 1. جلب أنميات من صفحة عشوائية ضمن النطاق
+            page = random.randint(page_range[0], page_range[1])
+            anime_list = get_data_from_api("top/anime", params={"page": page})
+            if not anime_list: continue
+
+            # 2. توليد سؤال عشوائي تماماً
+            q_data = generate_any_question(anime_list)
+            
+            if q_data:
+                # 3. حساب الصعوبة الحقيقية (نوع السؤال + شهرة الأنمي)
+                total_difficulty = calculate_total_difficulty(q_data, anime_list)
+                
+                # 4. التحقق: هل النتيجة تناسب الزر الذي ضغطه اللاعب؟
+                if target_range[0] <= total_difficulty <= target_range[1]:
+                    
+                    # حساب النقاط (الصعوبة * 50)
+                    q_data['points'] = total_difficulty * 50
+                    
+                    # خلط الخيارات
+                    if q_data.get('options') and "صح" not in q_data['options']:
+                        random.shuffle(q_data['options'])
+                        
+                    return jsonify({"status": "success", "data": q_data})
+        except:
+            continue
+
+    # في حال الفشل (نادر جداً)، نعود برسالة خطأ ليحاول اللاعب مجدداً
+    return jsonify({"status": "error", "message": "Failed to generate appropriate question"})
+
+@app.route('/submit_answer', methods=['POST'])
+def submit_answer():
+    data = request.json
+    is_correct = data.get('correct')
+    points_worth = data.get('points', 0)
+    
+    if is_correct: session['score'] += points_worth
+    else: session['hearts'] -= 1
+    session.modified = True
+    
+    if session['hearts'] <= 0: return jsonify({"status": "gameover"})
+    return jsonify({"status": "continue"})
+
+@app.route('/gameover')
+def gameover():
+    score = session.get('score', 0)
+    title = "مبتدئ"
+    if score > 1000: title = "أوتاكو هاوي"
+    if score > 3000: title = "أوتاكو محترف"
+    if score > 6000: title = "خبير أنمي"
+    if score > 10000: title = "هوكاغي الأنمي"
+    return render_template('gameover.html', score=score, title=title)
 
 if __name__ == '__main__':
     app.run(debug=True)

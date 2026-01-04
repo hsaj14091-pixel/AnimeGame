@@ -692,26 +692,29 @@ def play_ui():
     mode = request.args.get('mode', 'random')
     session['mode'] = mode
     
-    # الكود الجديد الذي يمنع ظهور صفحة الانتظار
+    # --- التعديل: الاتصال المباشر بـ MAL ---
     if mode == 'mal':
         user = get_current_user()
+        # التحقق من وجود المستخدم واسم MAL
         if not user or not user['mal_username']:
             flash("يجب ربط حساب MAL أولاً", "error")
             return redirect(url_for('profile'))
             
-        # استخدام الدالة الرسمية مباشرة (بدون توجيه لصفحة sync)
+        # استخدام الدالة الموجودة في كودك مسبقاً
         ids = fetch_mal_list(user['mal_username'])
         
         if ids:
             session['mal_ids'] = ids
         else:
-            flash("لم نتمكن من جلب القائمة، سنستخدم الأسئلة العشوائية.", "warning")
+            flash("لم نتمكن من جلب القائمة (تأكد أنها عامة)، سنستخدم الأسئلة العشوائية.", "warning")
             session['mode'] = 'random'
 
+    # إعادة تعيين النقاط والقلوب (كما في كودك الأصلي)
     session['score'] = 0
     session['hearts'] = 3
+    
+    # الدخول للعبة مباشرة
     return render_template('game.html')
-# هذا الكود ضروري لتشغيل السيرفر
 if __name__ == '__main__':
     # تأكد من أن debug=True لترت الأخطاء، والمنفذ 5000
     socketio.run(app, debug=True, port=5000)

@@ -1,6 +1,8 @@
-Flask
-Flask-SocketIO
+flask
+flask-socketio
 requests
-captcha
-gunicorn
 eventlet
+gunicorn
+captcha
+itsdangerous
+werkzeug

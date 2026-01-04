@@ -2,124 +2,84 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>تحدي الأوتاكو | Otaku Challenge</title>
+    <title>Otaku Challenge | الرئيسية</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        :root {
-            --bg-color: #121212;
-            --accent: #f39c12;
-            --accent-glow: rgba(243, 156, 18, 0.5);
-            --text: #ffffff;
-        }
-
+        :root { --bg: #121212; --card: #1e1e2e; --accent: #f39c12; --otaku: #8e44ad; --text: #fff; }
         body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background-color: var(--bg-color); 
+            font-family: 'Segoe UI', Tahoma, sans-serif; 
+            background: var(--bg); color: var(--text); 
+            text-align: center; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; 
+            min-height: 100vh; margin: 0; padding: 20px;
             background-image: radial-gradient(circle at 50% 50%, #1e1e2e 0%, #000 100%);
-            color: var(--text); 
-            text-align: center; 
-            display: flex; flex-direction: column; justify-content: center; align-items: center; 
-            min-height: 100vh; margin: 0; 
-            overflow: hidden;
         }
 
-        /* تأثيرات الخلفية المتحركة */
-        .bg-particles {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; z-index: 0; opacity: 0.1;
-            background-image: url('https://www.transparenttextures.com/patterns/stardust.png');
-            animation: moveBackground 100s linear infinite;
-        }
-
-        .container { z-index: 1; position: relative; padding: 20px; }
-
-        h1 {
-            font-size: 3.5rem; margin-bottom: 10px; color: var(--accent);
+        .logo-area { margin-bottom: 50px; animation: float 3s infinite ease-in-out; }
+        .logo-text { 
+            font-size: 3.5rem; font-weight: bold; margin: 0;
+            background: linear-gradient(45deg, var(--accent), #e67e22);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             text-transform: uppercase; letter-spacing: 2px;
-            text-shadow: 0 0 20px var(--accent-glow);
-            animation: pulse 2s infinite;
+            text-shadow: 0 0 20px rgba(243, 156, 18, 0.3);
+        }
+        .subtitle { color: #888; font-size: 1.2rem; margin-top: 10px; }
+
+        .menu-grid { 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 20px; 
+            width: 100%; max-width: 800px; 
         }
 
-        p.subtitle {
-            font-size: 1.2rem; color: #aaa; margin-bottom: 40px;
-            max-width: 500px; line-height: 1.6;
+        .mode-card {
+            background: var(--card); padding: 40px; border-radius: 20px;
+            cursor: pointer; transition: 0.3s; border: 2px solid transparent;
+            text-decoration: none; color: white; display: block;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
         }
+        
+        .mode-card:hover { transform: translateY(-10px); box-shadow: 0 15px 30px rgba(0,0,0,0.5); }
+        
+        /* تصميم بطاقة الفردي */
+        .card-solo { border-color: var(--accent); }
+        .card-solo:hover { background: rgba(243, 156, 18, 0.1); }
+        
+        /* تصميم بطاقة الجماعي */
+        .card-multi { border-color: var(--otaku); position: relative; overflow: hidden; }
+        .card-multi:hover { background: rgba(142, 68, 173, 0.1); }
+        
+        .icon { font-size: 4rem; display: block; margin-bottom: 20px; }
+        .mode-title { font-size: 1.8rem; font-weight: bold; display: block; margin-bottom: 10px; }
+        .mode-desc { color: #aaa; font-size: 0.9rem; line-height: 1.6; }
 
-        .start-btn {
-            display: inline-block;
-            background: var(--accent);
-            color: #000;
-            padding: 20px 60px;
-            font-size: 1.5rem;
-            font-weight: 900;
-            text-decoration: none;
-            border-radius: 50px;
-            box-shadow: 0 0 30px var(--accent-glow);
-            transition: transform 0.2s, box-shadow 0.2s;
-            position: relative;
-            overflow: hidden;
-        }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 
-        .start-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 0 50px var(--accent);
-            background: #fff;
-        }
-
-        .rules-box {
-            margin-top: 50px;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 20px;
-            border-radius: 15px;
-            border: 1px solid #333;
-            text-align: right;
-            display: inline-block;
-            max-width: 400px;
-        }
-        .rules-box h3 { color: var(--accent); margin-top: 0; }
-        .rules-box ul { padding-right: 20px; color: #ccc; }
-        .rules-box li { margin-bottom: 8px; }
-
-        @keyframes pulse {
-            0%, 100% { text-shadow: 0 0 20px var(--accent-glow); }
-            50% { text-shadow: 0 0 40px var(--accent), 0 0 10px #fff; }
-        }
-        @keyframes moveBackground {
-            from { background-position: 0 0; }
-            to { background-position: 1000px 1000px; }
+        /* للجوال: اجعل البطاقات تحت بعض */
+        @media (max-width: 600px) {
+            .menu-grid { grid-template-columns: 1fr; }
+            .logo-text { font-size: 2.5rem; }
         }
     </style>
 </head>
 <body>
 
-    <div class="bg-particles"></div>
-
-    <div class="container">
-        <h1>تحدي الأوتاكو</h1>
-        <p class="subtitle">هل تعتقد أنك تعرف كل شيء عن الأنمي؟<br>أثبت ذلك وارفع تصنيفك من "مبتدئ" إلى "هوكاغي"!</p>
-
-        <a href="/play" class="start-btn">ابدأ اللعبة 🔥</a>
-
-        <div class="rules-box">
-            <h3>📜 قوانين التحدي:</h3>
-            <ul>
-                <li>❤️ لديك <strong>3 قلوب</strong> فقط.</li>
-                <li>⏳ كل سؤال له وقت محدد، السرعة مهمة!</li>
-                <li>🏆 الأسئلة الصعبة تمنحك <strong>نقاطاً مضاعفة</strong>.</li>
-                <li>🎌 التصنيفات: (مبتدئ - محترف - خبير - هوكاغي).</li>
-            </ul>
-        </div>
-        
-        <p style="margin-top: 30px; font-size: 0.9rem; color: #555;">
-            High Score: <span id="highScore">0</span>
-        </p>
+    <div class="logo-area">
+        <h1 class="logo-text">Otaku Challenge</h1>
+        <div class="subtitle">أثبت أنك الهوكاغي القادم!</div>
     </div>
 
-    <script>
-        // كود بسيط لجلب أعلى نتيجة مخزنة في المتصفح (مستقبلاً سنفعلها)
-        const savedScore = localStorage.getItem('otakuHighScore') || 0;
-        document.getElementById('highScore').innerText = savedScore;
-    </script>
+    <div class="menu-grid">
+        <a href="/play" class="mode-card card-solo">
+            <span class="icon">👤</span>
+            <span class="mode-title">لعب فردي</span>
+            <span class="mode-desc">تحدى نفسك، اختر مستوى الصعوبة، وحاول جمع أكبر عدد من النقاط.</span>
+        </a>
+
+        <a href="/multiplayer_lobby" class="mode-card card-multi">
+            <span class="icon">⚔️</span>
+            <span class="mode-title">تحدي الأصدقاء</span>
+            <span class="mode-desc">أنشئ غرفة خاصة، وادعُ أصدقاءك لتحدي مباشر في الوقت الفعلي.</span>
+        </a>
+    </div>
 
 </body>
 </html>

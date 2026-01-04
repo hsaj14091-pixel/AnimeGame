@@ -34,7 +34,6 @@ def get_popularity_score(anime):
 
 def get_question_type_score(mode):
     """تقييم نوع السؤال من 1 (سهل) إلى 6 (صعب)"""
-    # نحدد النقاط بناءً على نوع الـ ID أو الـ mode
     scores = {
         'tf': 1,         # صح أم خطأ
         'char': 2,       # شخصية
@@ -48,11 +47,10 @@ def get_question_type_score(mode):
 
 def calculate_total_difficulty(q_data, anime_list):
     """حساب المجموع النهائي للصعوبة (2 - 12)"""
-    # 1. تحديد نوع السؤال من الـ ID
     q_id = q_data['id']
     mode_key = 'tf' # افتراضي
     
-    if 'sort' in q_data['mode']: mode_key = 'sorting' # الترتيب هو الأهم
+    if 'sort' in q_data['mode']: mode_key = 'sorting' 
     elif 'imp' in q_id: mode_key = 'imposter'
     elif 'link' in q_id: mode_key = 'link'
     elif 'rev' in q_id or 'std' in q_id: mode_key = 'studio'
@@ -62,8 +60,7 @@ def calculate_total_difficulty(q_data, anime_list):
     
     type_score = get_question_type_score(mode_key)
     
-    # 2. تحديد شهرة الأنمي
-    # نأخذ أول أنمي في القائمة كعينة (لأن الأسئلة عادة تكون من نفس النطاق)
+    # تحديد شهرة الأنمي
     avg_pop_score = 0
     valid_anime = [a for a in anime_list if a.get('popularity')]
     if valid_anime:
@@ -76,7 +73,7 @@ def calculate_total_difficulty(q_data, anime_list):
     return total
 
 # ==========================================
-#  جميع مولدات الأسئلة (9 دوال - كاملة)
+#  جميع مولدات الأسئلة (9 دوال)
 # ==========================================
 
 # 1. الترتيب الزمني
@@ -216,74 +213,72 @@ def generate_any_question(anime_list):
     return gen_func(anime_list)
 
 # ==========================================
-#  المسارات (Routes)
+#  المسارات (Routes) - التحديث الجديد
 # ==========================================
 
 @app.route('/')
 def home():
-    session.clear()
+    # الآن هذا المسار يعرض القائمة الرئيسية (فردي / جماعي)
     return render_template('home.html')
 
 @app.route('/play')
 def play_ui():
+    # هذا المسار خاص باللعب الفردي
+    # نعيد تعيين القلوب إذا كان قد خسر سابقاً
     if 'score' not in session: session['score'] = 0
-    if 'hearts' not in session: session['hearts'] = 3
-    if session['hearts'] <= 0: return redirect(url_for('gameover'))
+    if 'hearts' not in session or session['hearts'] <= 0: 
+        session['hearts'] = 3
+        session['score'] = 0 # تصفير النقاط عند بدء لعبة جديدة
+        
     return render_template('game.html')
+
+@app.route('/multiplayer_lobby')
+def multiplayer_lobby():
+    # صفحة مؤقتة للعب الجماعي
+    return """
+    <body style="background:#121212; color:white; text-align:center; font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh;">
+        <div>
+            <h1 style="color:#8e44ad">🚧 قريباً: طور الأونلاين 🚧</h1>
+            <p>نحن نعمل على تجهيز الحلبة للقتال الجماعي!</p>
+            <a href="/" style="color:#f39c12; text-decoration:none; border:1px solid #f39c12; padding:10px 20px; border-radius:20px;">العودة للرئيسية</a>
+        </div>
+    </body>
+    """
 
 @app.route('/get_question/<difficulty>')
 def get_question(difficulty):
-    """الخوارزمية الذكية: تختار سؤالاً يناسب الصعوبة المطلوبة"""
     if session.get('hearts', 0) <= 0:
         return jsonify({"status": "gameover"})
 
-    # إعدادات الصعوبة (النطاق المستهدف + نطاق البحث في الصفحات)
-    target_range = (2, 4) # افتراضي سهل
+    target_range = (2, 4)
     page_range = (1, 5)
     
     if difficulty == 'easy':
-        target_range = (2, 4)
-        page_range = (1, 3)    # أنميات مشهورة جداً
+        target_range = (2, 4); page_range = (1, 3)
     elif difficulty == 'medium':
-        target_range = (5, 7)
-        page_range = (3, 10)
+        target_range = (5, 7); page_range = (3, 10)
     elif difficulty == 'hard':
-        target_range = (8, 10)
-        page_range = (10, 20)
+        target_range = (8, 10); page_range = (10, 20)
     elif difficulty == 'otaku':
-        target_range = (11, 12)
-        page_range = (20, 30)  # أنميات مغمورة جداً
+        target_range = (11, 12); page_range = (20, 30)
 
-    # نحاول 15 مرة للحصول على معادلة صحيحة
     for _ in range(15):
         try:
-            # 1. جلب أنميات من صفحة عشوائية ضمن النطاق
             page = random.randint(page_range[0], page_range[1])
             anime_list = get_data_from_api("top/anime", params={"page": page})
             if not anime_list: continue
 
-            # 2. توليد سؤال عشوائي تماماً
             q_data = generate_any_question(anime_list)
             
             if q_data:
-                # 3. حساب الصعوبة الحقيقية (نوع السؤال + شهرة الأنمي)
                 total_difficulty = calculate_total_difficulty(q_data, anime_list)
-                
-                # 4. التحقق: هل النتيجة تناسب الزر الذي ضغطه اللاعب؟
                 if target_range[0] <= total_difficulty <= target_range[1]:
-                    
-                    # حساب النقاط (الصعوبة * 50)
                     q_data['points'] = total_difficulty * 50
-                    
-                    # خلط الخيارات
                     if q_data.get('options') and "صح" not in q_data['options']:
                         random.shuffle(q_data['options'])
-                        
                     return jsonify({"status": "success", "data": q_data})
-        except:
-            continue
+        except: continue
 
-    # في حال الفشل (نادر جداً)، نعود برسالة خطأ ليحاول اللاعب مجدداً
     return jsonify({"status": "error", "message": "Failed to generate appropriate question"})
 
 @app.route('/submit_answer', methods=['POST'])

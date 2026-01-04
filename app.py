@@ -17,7 +17,7 @@ import io
 
 app = Flask(__name__)
 app.secret_key = 'Otaku_King_Secret_Key_2026'
-
+MAL_CLIENT_ID = "3092821bb2c3cfdecc5e5558a32304f2"
 # ==========================================
 #  ⚙️ إعدادات الإيميل (عدلها ببياناتك)
 # ==========================================
@@ -99,6 +99,20 @@ def get_current_user():
         conn.close()
         return user
     return None
+def fetch_mal_list(username):
+    """جلب القائمة باستخدام مفتاح MAL الرسمي"""
+    url = f"https://api.myanimelist.net/v2/users/{username}/animelist"
+    headers = { "X-MAL-CLIENT-ID": MAL_CLIENT_ID }
+    params = { "status": "completed", "limit": 1000, "fields": "id,title" }
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json().get('data', [])
+            return [node['node']['id'] for node in data]
+    except Exception as e:
+        print(f"Error: {e}")
+    return []
 def get_data_from_api(endpoint, params=None):
     """دالة مساعدة لجلب البيانات من Jikan للأشياء الفرعية"""
     url = f"https://api.jikan.moe/v4/{endpoint}"
@@ -678,20 +692,22 @@ def play_ui():
     mode = request.args.get('mode', 'random')
     session['mode'] = mode
     
+    # الوضع الجديد: استخدام المفتاح الرسمي مباشرة
     if mode == 'mal':
-        # التعديل هنا: نوجه اللاعب للمزامنة أولاً
-        statuses = request.args.getlist('status')
-        params = "&".join([f"status={s}" for s in statuses])
-        return redirect(f"/sync_mal?{params}")
+        user = get_current_user()
+        if not user or not user['mal_username']:
+            flash("يجب ربط حساب MAL أولاً", "error")
+            return redirect(url_for('profile'))
+            
+        # استخدام الدالة الجديدة التي أضفناها
+        ids = fetch_mal_list(user['mal_username'])
+        
+        if ids:
+            session['mal_ids'] = ids
+        else:
+            flash("لم نتمكن من جلب القائمة (تأكد أنها عامة Public) - سنستخدم العشوائي مؤقتاً", "warning")
+            session['mode'] = 'random'
 
-    elif mode == 'mal_ready':
-        # وضع جديد: يعني أن البيانات وصلت بالفعل من المزامنة
-        session['mode'] = 'mal' # نرجعه للاسم الطبيعي
-        if 'mal_ids' not in session or not session['mal_ids']:
-             return redirect(url_for('home'))
-             
-    # ... باقي الكود كما هو (session score, hearts, render_template) ...
-    session['score'] = 0; session['hearts'] = 3
+    session['score'] = 0
+    session['hearts'] = 3
     return render_template('game.html')
-if __name__ == '__main__':
-    socketio.run(app, debug=True, port=5000)

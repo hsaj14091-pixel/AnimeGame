@@ -15,7 +15,7 @@
             background-image: radial-gradient(circle at 50% 50%, #1e1e2e 0%, #000 100%);
         }
 
-        .logo-area { margin-bottom: 50px; animation: float 3s infinite ease-in-out; }
+        .logo-area { margin-bottom: 30px; animation: float 3s infinite ease-in-out; }
         .logo-text { 
             font-size: 3.5rem; font-weight: bold; margin: 0;
             background: linear-gradient(45deg, var(--accent), #e67e22);
@@ -25,39 +25,30 @@
         }
         .subtitle { color: #888; font-size: 1.2rem; margin-top: 10px; }
 
-        .menu-grid { 
-            display: grid; grid-template-columns: 1fr 1fr; gap: 20px; 
-            width: 100%; max-width: 800px; 
-        }
-
+        .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; max-width: 800px; }
         .mode-card {
-            background: var(--card); padding: 40px; border-radius: 20px;
+            background: var(--card); padding: 30px; border-radius: 20px;
             cursor: pointer; transition: 0.3s; border: 2px solid transparent;
             text-decoration: none; color: white; display: block;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3); position: relative; overflow: hidden;
         }
+        .mode-card:hover { transform: translateY(-5px); box-shadow: 0 15px 30px rgba(0,0,0,0.5); }
         
-        .mode-card:hover { transform: translateY(-10px); box-shadow: 0 15px 30px rgba(0,0,0,0.5); }
-        
-        /* تصميم بطاقة الفردي */
         .card-solo { border-color: var(--accent); }
-        .card-solo:hover { background: rgba(243, 156, 18, 0.1); }
-        
-        /* تصميم بطاقة الجماعي */
-        .card-multi { border-color: var(--otaku); position: relative; overflow: hidden; }
-        .card-multi:hover { background: rgba(142, 68, 173, 0.1); }
-        
-        .icon { font-size: 4rem; display: block; margin-bottom: 20px; }
-        .mode-title { font-size: 1.8rem; font-weight: bold; display: block; margin-bottom: 10px; }
-        .mode-desc { color: #aaa; font-size: 0.9rem; line-height: 1.6; }
+        .card-multi { border-color: var(--otaku); }
+        .card-mal { border-color: #2ecc71; background: linear-gradient(135deg, #1e1e2e, #145a32); }
+
+        .icon { font-size: 3rem; display: block; margin-bottom: 15px; }
+        .mode-title { font-size: 1.5rem; font-weight: bold; display: block; margin-bottom: 10px; }
+        .mode-desc { color: #aaa; font-size: 0.9rem; line-height: 1.5; }
+
+        .auth-bar { margin-bottom: 40px; background: rgba(255,255,255,0.05); padding: 15px 30px; border-radius: 50px; display: flex; gap: 20px; align-items: center; }
+        .btn-auth { color: white; text-decoration: none; font-weight: bold; padding: 8px 15px; border-radius: 20px; transition: 0.3s; }
+        .btn-login { background: #3498db; } .btn-register { background: #e67e22; }
+        .user-welcome { color: #f1c40f; font-weight: bold; font-size: 1.1rem; }
 
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-
-        /* للجوال: اجعل البطاقات تحت بعض */
-        @media (max-width: 600px) {
-            .menu-grid { grid-template-columns: 1fr; }
-            .logo-text { font-size: 2.5rem; }
-        }
+        @media (max-width: 600px) { .menu-grid { grid-template-columns: 1fr; } .logo-text { font-size: 2.5rem; } }
     </style>
 </head>
 <body>
@@ -67,17 +58,44 @@
         <div class="subtitle">أثبت أنك الهوكاغي القادم!</div>
     </div>
 
+    <div class="auth-bar">
+        {% if user %}
+            <span class="user-welcome">مرحباً، {{ user['username'] }} 👋</span>
+            {% if user['mal_username'] %}
+                <span style="font-size:0.8rem; color:#2ecc71;">(MAL: {{ user['mal_username'] }})</span>
+            {% endif %}
+            <a href="/logout" class="btn-auth" style="background:#c0392b">خروج</a>
+        {% else %}
+            <a href="/login" class="btn-auth btn-login">تسجيل دخول</a>
+            <a href="/register" class="btn-auth btn-register">إنشاء حساب</a>
+        {% endif %}
+    </div>
+
     <div class="menu-grid">
-        <a href="/play" class="mode-card card-solo">
-            <span class="icon">👤</span>
-            <span class="mode-title">لعب فردي</span>
-            <span class="mode-desc">تحدى نفسك، اختر مستوى الصعوبة، وحاول جمع أكبر عدد من النقاط.</span>
+        <a href="/play?mode=random" class="mode-card card-solo">
+            <span class="icon">🎲</span>
+            <span class="mode-title">تحدي عشوائي</span>
+            <span class="mode-desc">أسئلة من جميع الأنميات في قاعدة البيانات. اختبر ثقافتك العامة.</span>
         </a>
+
+        {% if user and user['mal_username'] %}
+            <a href="/play?mode=mal" class="mode-card card-mal">
+                <span class="icon">📺</span>
+                <span class="mode-title">من قائمتي (MyList)</span>
+                <span class="mode-desc">فقط أسئلة عن الأنميات التي شاهدتها (Completed/Watching). لا حرق!</span>
+            </a>
+        {% elif user %}
+            <div class="mode-card" style="opacity:0.5; cursor:not-allowed; border-color:#555">
+                <span class="icon">🔒</span>
+                <span class="mode-title">من قائمتي (MyList)</span>
+                <span class="mode-desc">يجب ربط حساب MyAnimeList أولاً لتفعيل هذا الوضع.</span>
+            </div>
+        {% endif %}
 
         <a href="/multiplayer_lobby" class="mode-card card-multi">
             <span class="icon">⚔️</span>
             <span class="mode-title">تحدي الأصدقاء</span>
-            <span class="mode-desc">أنشئ غرفة خاصة، وادعُ أصدقاءك لتحدي مباشر في الوقت الفعلي.</span>
+            <span class="mode-desc">أنشئ غرفة خاصة وادعُ أصدقاءك للمنافسة المباشرة.</span>
         </a>
     </div>
 

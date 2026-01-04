@@ -4,66 +4,82 @@
     <meta charset="UTF-8">
     <title>إنشاء حساب جديد</title>
     <style>
-        body {
-            margin: 0;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: linear-gradient(135deg, #1a1a1a, #2c3e50);
-            font-family: sans-serif;
-            color: white;
-        }
-        .form-container {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 40px;
-            border-radius: 15px;
-            width: 350px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            text-align: center;
-        }
+        body { margin: 0; min-height: 100vh; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #1a1a1a, #2c3e50); font-family: sans-serif; color: white; }
+        .form-container { background: rgba(255, 255, 255, 0.1); padding: 30px; border-radius: 15px; width: 380px; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); text-align: center; margin: 20px; }
         h2 { margin-bottom: 20px; color: #f39c12; }
-        input {
-            width: 90%;
-            padding: 12px;
-            margin: 10px 0;
-            border-radius: 5px;
-            border: none;
-            background: rgba(0,0,0,0.3);
-            color: white;
-            outline: none;
-        }
-        input:focus { border: 1px solid #f39c12; }
-        button {
-            width: 100%;
-            padding: 12px;
-            margin-top: 20px;
-            border: none;
-            border-radius: 5px;
-            background-color: #f39c12;
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        button:hover { background-color: #e67e22; }
+        
+        .input-group { margin-bottom: 12px; text-align: right; }
+        label { font-size: 0.9rem; color: #ccc; margin-bottom: 5px; display: block; margin-right: 5px; }
+        input { width: 100%; padding: 10px; border-radius: 5px; border: none; background: rgba(0,0,0,0.3); color: white; outline: none; box-sizing: border-box; }
+        input:focus { border: 1px solid #f39c12; background: rgba(0,0,0,0.5); }
+        
+        .captcha-box { background: white; padding: 10px; border-radius: 5px; margin: 10px 0; display: flex; justify-content: center; align-items: center; }
+        .captcha-img { max-width: 100%; height: auto; border-radius: 3px; }
+        
+        button { width: 100%; padding: 12px; margin-top: 15px; border: none; border-radius: 5px; background-color: #f39c12; color: white; font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.3s; }
+        button:hover { background-color: #e67e22; transform: translateY(-2px); }
+        
+        .msg { padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 0.9rem; }
+        .msg-error { background: rgba(231, 76, 60, 0.3); color: #ffadad; border: 1px solid #e74c3c; }
+        .msg-success { background: rgba(46, 204, 113, 0.3); color: #abebc6; border: 1px solid #2ecc71; }
+        
         a { color: #ccc; text-decoration: none; font-size: 0.9em; display: block; margin-top: 15px; }
         a:hover { color: white; }
     </style>
 </head>
 <body>
-
     <div class="form-container">
-        <h2>إنشاء حساب مقاتل</h2>
-        <form action="/login" method="GET"> <input type="text" placeholder="اسم المستخدم (اللقب)" required>
-            <input type="email" placeholder="البريد الإلكتروني" required>
-            <input type="password" placeholder="كلمة المرور" required>
+        <h2>إنشاء حساب مقاتل 🛡️</h2>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="msg msg-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form action="/register" method="POST">
+            <div class="input-group">
+                <label>اسم المستخدم (اللقب)</label>
+                <input type="text" name="username" required>
+            </div>
+
+            <div class="input-group">
+                <label>البريد الإلكتروني (لتفعيل الحساب)</label>
+                <input type="email" name="email" required>
+            </div>
+
+            <div class="input-group">
+                <label>كلمة المرور</label>
+                <input type="password" name="password" required>
+            </div>
+
+            <div class="input-group">
+                <label>تأكيد كلمة المرور</label>
+                <input type="password" name="confirm_password" required>
+            </div>
+            
+            <div class="input-group">
+                <label>حساب MAL (اختياري)</label>
+                <input type="text" name="mal_username" placeholder="مثال: OtakuKing">
+            </div>
+
+            <hr style="border-color:rgba(255,255,255,0.1); margin:15px 0;">
+
+            <div class="input-group">
+                <label>أثبت أنك لست روبوت (اكتب الأرقام):</label>
+                <div class="captcha-box">
+                    <img src="/captcha_image" class="captcha-img" alt="Captcha" onclick="this.src='/captcha_image?'+Math.random()">
+                </div>
+                <input type="text" name="captcha" placeholder="اكتب الرقم الظاهر في الصورة" required style="text-align:center; font-size:1.2rem; letter-spacing:5px;">
+                <p style="font-size:0.7rem; color:#888; text-align:center; cursor:pointer;" onclick="document.querySelector('.captcha-img').click()">اضغط على الصورة لتغييرها</p>
+            </div>
+
             <button type="submit">تسجيل الانضمام</button>
         </form>
-        <a href="/login">لديك حساب بالفعل؟ سجل دخولك</a>
+        <a href="/login">لديك حساب بالفعل؟ دخول</a>
         <a href="/">العودة للرئيسية</a>
     </div>
-
 </body>
 </html>

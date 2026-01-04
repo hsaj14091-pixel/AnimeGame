@@ -1,60 +1,168 @@
-from flask import Flask, render_template, session, request, jsonify, redirect, url_for
-from flask_socketio import SocketIO, join_room, leave_room, emit
+from flask import Flask, render_template, session, request, jsonify, redirect, url_for, flash, Response
+from flask_socketio import SocketIO, join_room, emit
+import sqlite3
 import random
 import requests
 import json
-import os
+import smtplib 
+from email.mime.text import MIMEText 
+from email.mime.multipart import MIMEMultipart 
+from werkzeug.security import generate_password_hash, check_password_hash
+from itsdangerous import URLSafeTimedSerializer 
+from captcha.image import ImageCaptcha 
+import io 
 
 app = Flask(__name__)
-app.secret_key = 'Otaku_Math_Difficulty_2026'
+app.secret_key = 'Otaku_King_Secret_Key_2026'
 
-# إعدادات SocketIO (محرك الأونلاين)
+# ==========================================
+#  ⚙️ إعدادات الإيميل (يجب تعديلها ببياناتك الحقيقية)
+# ==========================================
+SMTP_EMAIL = "otaku.challenge.game@gmail.com"  # ضع إيميلك هنا
+SMTP_PASSWORD = "xxey zlpw fnzb vdgc"
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+
+serializer = URLSafeTimedSerializer(app.secret_key)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
-
+DB_NAME = "anime_game.db"
 COMMON_STUDIOS = ["Toei Animation", "MAPPA", "Madhouse", "Bones", "Sunrise", "Pierrot", "A-1 Pictures", "Wit Studio", "Ufotable", "Studio Ghibli", "J.C.Staff"]
 
 # ==========================================
-#  أدوات مساعدة + منطق الصعوبة الرياضي
+#  1. دوال مساعدة (الإيميل، القاعدة، الكابتشا)
 # ==========================================
+def get_db():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def send_activation_email(to_email):
+    """إرسال رابط تفعيل للإيميل"""
+    try:
+        token = serializer.dumps(to_email, salt='email-confirm')
+        link = url_for('confirm_email', token=token, _external=True)
+        
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_EMAIL
+        msg['To'] = to_email
+        msg['Subject'] = "تفعيل حسابك في Otaku Challenge"
+        
+        body = f"""
+        <div dir="rtl" style="text-align:right; font-family:sans-serif;">
+            <h2>مرحباً بك أيها المقاتل! ⚔️</h2>
+            <p>لقد اقتربت من الانضمام. الرجاء الضغط على الزر أدناه لتفعيل حسابك:</p>
+            <a href="{link}" style="background:#f39c12; color:white; padding:10px 20px; text-decoration:none; border-radius:5px; font-weight:bold;">تفعيل الحساب</a>
+            <p style="color:#777; font-size:0.9em; margin-top:20px;">أو انسخ الرابط: {link}</p>
+        </div>
+        """
+        msg.attach(MIMEText(body, 'html'))
+        
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_EMAIL, SMTP_PASSWORD)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Email Error: {e}")
+        return False
+
+def create_user(username, email, password, mal_username):
+    try:
+        conn = get_db()
+        hashed_pw = generate_password_hash(password)
+        # المستخدم الجديد يكون غير مفعل (is_verified = 0)
+        conn.execute('INSERT INTO users (username, email, password, mal_username, is_verified) VALUES (?, ?, ?, ?, 0)',
+                     (username, email, hashed_pw, mal_username))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Database Error: {e}")
+        return False
+
+def get_user_by_email(email):
+    conn = get_db()
+    user = conn.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+    conn.close()
+    return user
+
+def get_current_user():
+    if 'user_id' in session:
+        conn = get_db()
+        user = conn.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+        conn.close()
+        return user
+    return None
+
+# ==========================================
+#  2. منطق جلب قائمة MAL (نظام AMQ)
+# ==========================================
+def fetch_mal_list(username):
+    url = f"https://api.jikan.moe/v4/users/{username}/animelist?status=completed&limit=300"
+    try:
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            return [item['anime']['mal_id'] for item in resp.json()['data']]
+    except: return []
+    return []
+
+# دالة مساعدة لجلب بيانات API
 def get_data_from_api(endpoint, params=None):
     if params is None: params = {}
     try:
-        url = f"https://api.jikan.moe/v4/{endpoint}"
-        resp = requests.get(url, params=params, timeout=4)
+        resp = requests.get(f"https://api.jikan.moe/v4/{endpoint}", params=params, timeout=3)
         if resp.status_code == 200: return resp.json()['data']
     except: pass
     return []
 
-# --- دوال التقييم ---
+# ==========================================
+#  3. جلب الأسئلة
+# ==========================================
+def get_anime_batch_smart(difficulty):
+    conn = get_db()
+    
+    # فلترة حسب قائمة MAL
+    if session.get('mode') == 'mal' and session.get('mal_ids'):
+        my_ids = session['mal_ids']
+        if not my_ids: return []
+        ids_str = ','.join(map(str, my_ids[:500])) 
+        query = f"SELECT raw_json FROM anime WHERE mal_id IN ({ids_str}) ORDER BY RANDOM() LIMIT 20"
+    
+    # الفلترة العادية
+    else:
+        if difficulty == 'easy': query = "SELECT raw_json FROM anime WHERE popularity <= 200 ORDER BY RANDOM() LIMIT 20"
+        elif difficulty == 'medium': query = "SELECT raw_json FROM anime WHERE popularity BETWEEN 201 AND 1500 ORDER BY RANDOM() LIMIT 20"
+        elif difficulty == 'hard': query = "SELECT raw_json FROM anime WHERE popularity BETWEEN 1501 AND 4000 ORDER BY RANDOM() LIMIT 20"
+        else: query = "SELECT raw_json FROM anime WHERE popularity > 4000 ORDER BY RANDOM() LIMIT 20"
+
+    try:
+        rows = conn.execute(query).fetchall()
+        conn.close()
+        return [json.loads(row['raw_json']) for row in rows]
+    except:
+        return []
+
+# ==========================================
+#  4. مولدات الأسئلة (كما هي)
+# ==========================================
 def get_popularity_score(anime):
-    """تقييم شهرة الأنمي من 1 (مشهور) إلى 6 (مغمور)"""
     pop = anime.get('popularity', 0)
-    if pop == 0: return 3 # افتراضي
+    if pop == 0: return 3
     if pop <= 100: return 1
     if pop <= 300: return 2
     if pop <= 700: return 3
     if pop <= 1500: return 4
     if pop <= 3000: return 5
-    return 6 # مغمور جداً (أوتاكو)
+    return 6
 
 def get_question_type_score(mode):
-    """تقييم نوع السؤال من 1 (سهل) إلى 6 (صعب)"""
-    scores = {
-        'tf': 1,         # صح أم خطأ
-        'char': 2,       # شخصية
-        'year': 3,       # سنة
-        'imposter': 4,   # دخيل
-        'link': 4,       # رابط
-        'studio': 5,     # استوديو
-        'sorting': 6     # ترتيب
-    }
+    scores = {'tf': 1, 'char': 2, 'year': 3, 'imposter': 4, 'link': 4, 'studio': 5, 'sorting': 6}
     return scores.get(mode, 3)
 
 def calculate_total_difficulty(q_data, anime_list):
-    """حساب المجموع النهائي للصعوبة (2 - 12)"""
     q_id = q_data['id']
-    mode_key = 'tf' # افتراضي
-    
+    mode_key = 'tf'
     if 'sort' in q_data['mode']: mode_key = 'sorting' 
     elif 'imp' in q_id: mode_key = 'imposter'
     elif 'link' in q_id: mode_key = 'link'
@@ -62,25 +170,13 @@ def calculate_total_difficulty(q_data, anime_list):
     elif 'year' in q_id: mode_key = 'year'
     elif 'char' in q_id: mode_key = 'char'
     elif 'tf' in q_id: mode_key = 'tf'
-    
     type_score = get_question_type_score(mode_key)
-    
-    avg_pop_score = 0
+    avg_pop_score = 3
     valid_anime = [a for a in anime_list if a.get('popularity')]
-    if valid_anime:
-        target_anime = valid_anime[0]
-        avg_pop_score = get_popularity_score(target_anime)
-    else:
-        avg_pop_score = 3
-        
-    total = type_score + avg_pop_score
-    return total
+    if valid_anime: avg_pop_score = get_popularity_score(valid_anime[0])
+    return type_score + avg_pop_score
 
-# ==========================================
-#  جميع مولدات الأسئلة (9 دوال - كاملة)
-# ==========================================
-
-# 1. الترتيب الزمني
+# --- المولدات ---
 def generate_sort_year(anime_list):
     candidates = [a for a in anime_list if a.get('year')]
     if len(candidates) < 4: return None
@@ -90,13 +186,8 @@ def generate_sort_year(anime_list):
     shuffled = selected[:]
     random.shuffle(shuffled)
     display_items = [{"id": i['mal_id'], "text": i.get('title_english') or i['title']} for i in shuffled]
-    return {
-        "mode": "sorting", "id": f"sort_year_{random.randint(1000,9999)}",
-        "question": "رتب الأنميات زمنياً من **الأقدم** (بالأعلى) إلى **الأحدث**:",
-        "drag_items": display_items, "correct_order": json.dumps(correct_ids)
-    }
+    return {"mode": "sorting", "id": f"sort_year_{random.randint(1000,9999)}", "question": "رتب الأنميات زمنياً من **الأقدم** (بالأعلى) إلى **الأحدث**:", "drag_items": display_items, "correct_order": json.dumps(correct_ids)}
 
-# 2. ترتيب التقييم
 def generate_sort_score(anime_list):
     candidates = [a for a in anime_list if a.get('score')]
     if len(candidates) < 4: return None
@@ -106,42 +197,39 @@ def generate_sort_score(anime_list):
     shuffled = selected[:]
     random.shuffle(shuffled)
     display_items = [{"id": i['mal_id'], "text": i.get('title_english') or i['title']} for i in shuffled]
-    return {
-        "mode": "sorting", "id": f"sort_score_{random.randint(1000,9999)}",
-        "question": "رتب الأنميات حسب **التقييم العالمي** من الأعلى (بالأعلى) للأقل:",
-        "drag_items": display_items, "correct_order": json.dumps(correct_ids)
-    }
+    return {"mode": "sorting", "id": f"sort_score_{random.randint(1000,9999)}", "question": "رتب الأنميات حسب **التقييم العالمي** من الأعلى (بالأعلى) للأقل:", "drag_items": display_items, "correct_order": json.dumps(correct_ids)}
 
-# 3. الدخيل
 def generate_imposter_question(anime_list):
-    target = random.choice(anime_list)
-    if not target.get('studios'): return None
-    studio_id = target['studios'][0]['mal_id']
-    studio_name = target['studios'][0]['name']
-    same = get_data_from_api("anime", params={"producers": studio_id, "limit": 3})
-    if not same or len(same) < 3: return None
-    group = [a.get('title_english') or a['title'] for a in random.sample(same, 3)]
-    imposter_cands = [a for a in anime_list if not a.get('studios') or a['studios'][0]['mal_id'] != studio_id]
-    if not imposter_cands: return None
-    imposter = random.choice(imposter_cands)
-    imposter_title = imposter.get('title_english') or imposter['title']
-    options = group + [imposter_title]
-    random.shuffle(options)
-    return {"mode": "text", "id": f"med_imp_{random.randint(1000,9999)}", "question": f"واحد فقط من هذه الأنميات **ليس** من إنتاج استوديو {studio_name}، من هو؟", "answer": imposter_title, "options": options}
+    try:
+        target = random.choice(anime_list)
+        if not target.get('studios'): return None
+        studio_id = target['studios'][0]['mal_id']
+        studio_name = target['studios'][0]['name']
+        same = get_data_from_api("anime", params={"producers": studio_id, "limit": 3})
+        if not same or len(same) < 3: return None
+        group = [a.get('title_english') or a['title'] for a in random.sample(same, 3)]
+        imposter_cands = [a for a in anime_list if not a.get('studios') or a['studios'][0]['mal_id'] != studio_id]
+        if not imposter_cands: return None
+        imposter = random.choice(imposter_cands)
+        imposter_title = imposter.get('title_english') or imposter['title']
+        options = group + [imposter_title]
+        random.shuffle(options)
+        return {"mode": "text", "id": f"med_imp_{random.randint(1000,9999)}", "question": f"واحد فقط من هذه الأنميات **ليس** من إنتاج استوديو {studio_name}، من هو؟", "answer": imposter_title, "options": options}
+    except: return None
 
-# 4. الرابط العجيب
 def generate_common_link(anime_list):
-    target = random.choice(anime_list)
-    chars = get_data_from_api(f"anime/{target['mal_id']}/characters")
-    if not chars or len(chars) < 3: return None
-    names = [c['character']['name'] for c in random.sample(chars, 3)]
-    names_str = " - ".join(names)
-    title = target.get('title_english') or target['title']
-    others = [a.get('title_english') or a['title'] for a in anime_list if a['mal_id'] != target['mal_id']]
-    if len(others) < 3: return None
-    return {"mode": "text", "id": f"med_link_{random.randint(1000,9999)}", "question": f"ما الأنمي الذي يجمع هذه الشخصيات؟<br><h3 style='color:#3498db'>{names_str}</h3>", "answer": title, "options": random.sample(others, 3) + [title]}
+    try:
+        target = random.choice(anime_list)
+        chars = get_data_from_api(f"anime/{target['mal_id']}/characters")
+        if not chars or len(chars) < 3: return None
+        names = [c['character']['name'] for c in random.sample(chars, 3)]
+        names_str = " - ".join(names)
+        title = target.get('title_english') or target['title']
+        others = [a.get('title_english') or a['title'] for a in anime_list if a['mal_id'] != target['mal_id']]
+        if len(others) < 3: return None
+        return {"mode": "text", "id": f"med_link_{random.randint(1000,9999)}", "question": f"ما الأنمي الذي يجمع هذه الشخصيات؟<br><h3 style='color:#3498db'>{names_str}</h3>", "answer": title, "options": random.sample(others, 3) + [title]}
+    except: return None
 
-# 5. الاستوديو العكسي
 def generate_reverse_studio(anime_list):
     cands = [a for a in anime_list if a.get('studios')]
     if not cands: return None
@@ -153,7 +241,6 @@ def generate_reverse_studio(anime_list):
     wrong = [a.get('title_english') or a['title'] for a in random.sample(others, 3)]
     return {"mode": "text", "id": f"med_rev_{random.randint(1000,9999)}", "question": f"أي من هذه الأعمال من إنتاج **{studio}**؟", "answer": title, "options": wrong + [title]}
 
-# 6. الاستوديو الكلاسيكي
 def generate_classic_studio(anime_list):
     cands = [a for a in anime_list if a.get('studios')]
     if not cands: return None
@@ -163,7 +250,6 @@ def generate_classic_studio(anime_list):
     wrong = random.sample([s for s in COMMON_STUDIOS if s != studio], 3)
     return {"mode": "text", "id": f"easy_std_{random.randint(1000,9999)}", "question": f"ما هو استوديو إنتاج **{title}**؟", "answer": studio, "options": wrong + [studio]}
 
-# 7. السنة الكلاسيكية
 def generate_classic_year(anime_list):
     cands = [a for a in anime_list if a.get('year')]
     if not cands: return None
@@ -176,180 +262,184 @@ def generate_classic_year(anime_list):
         if fake != year: wrong.add(fake)
     return {"mode": "text", "id": f"easy_year_{random.randint(1000,9999)}", "question": f"في أي سنة صدر **{title}**؟", "answer": str(year), "options": list(wrong) + [str(year)]}
 
-# 8. شخصية ذكية (تعتمد على الصعوبة)
 def generate_smart_character(anime_list, difficulty_mode='medium'):
-    target = random.choice(anime_list)
-    
-    # نجلب الشخصيات
-    chars = get_data_from_api(f"anime/{target['mal_id']}/characters")
-    if not chars: return None
+    try:
+        target = random.choice(anime_list)
+        chars = get_data_from_api(f"anime/{target['mal_id']}/characters")
+        if not chars: return None
+        main_chars = [c for c in chars if c['role'] == 'Main']
+        support_chars = [c for c in chars if c['role'] == 'Supporting']
+        selected_char = None
+        points = 100
+        if difficulty_mode == 'easy' or (not support_chars and main_chars):
+            if not main_chars: return None 
+            selected_char = random.choice(main_chars)
+            points = 150 
+        elif difficulty_mode == 'medium':
+            if not support_chars: return None
+            top_support = support_chars[:5] 
+            selected_char = random.choice(top_support)
+            points = 300
+        else: # hard/otaku
+            if not support_chars: return None
+            if len(support_chars) > 5: selected_char = random.choice(support_chars[5:]); points=500
+            else: selected_char = random.choice(support_chars)
+        char_name = selected_char['character']['name']
+        title = target.get('title_english') or target['title']
+        others = [a.get('title_english') or a['title'] for a in anime_list if a['mal_id'] != target['mal_id']]
+        if len(others) < 3: return None
+        return {"mode": "text", "id": f"char_{random.randint(1000,9999)}", "question": f"الشخصية **{char_name}** ({selected_char['role']}) تظهر في أي أنمي؟", "answer": title, "points": points, "options": random.sample(others, 3) + [title]}
+    except: return None
 
-    # تصنيف الشخصيات
-    main_chars = [c for c in chars if c['role'] == 'Main']
-    support_chars = [c for c in chars if c['role'] == 'Supporting']
-    
-    selected_char = None
-    points = 100
-
-    # تحديد المنطق بناءً على الصعوبة المطلوبة
-    # 1. إذا كان الوضع سهل أو لا يوجد مساعدين -> خذ شخصية رئيسية
-    if difficulty_mode == 'easy' or (not support_chars and main_chars):
-        if not main_chars: return None # لا يوجد رئيسيين (نادر)
-        selected_char = random.choice(main_chars)
-        points = 150 # نقاط قليلة للسهل
-
-    # 2. الوضع المتوسط -> خذ شخصية مساعدة لكن مشهورة (أول القائمة)
-    elif difficulty_mode == 'medium':
-        if not support_chars: return None
-        # نأخذ من أول 5 شخصيات مساعدة (غالباً يكونون معروفين)
-        top_support = support_chars[:5] 
-        selected_char = random.choice(top_support)
-        points = 300
-
-    # 3. الوضع الصعب/أوتاكو -> خذ شخصية مساعدة مغمورة (من آخر القائمة)
-    else: # hard or otaku
-        if not support_chars: return None
-        # نأخذ من الشخصيات في نـهاية القائمة
-        if len(support_chars) > 5:
-            obscure_support = support_chars[5:] 
-            selected_char = random.choice(obscure_support)
-            points = 500 # نقاط عالية
-        else:
-            selected_char = random.choice(support_chars) # لو القائمة قصيرة
-
-    # تجهيز السؤال
-    char_name = selected_char['character']['name']
-    char_img = selected_char['character']['images']['jpg']['image_url'] # يمكن استخدام صورتها مستقبلاً
-    title = target.get('title_english') or target['title']
-    
-    # خيارات الخطأ (أنميات أخرى)
-    others = [a.get('title_english') or a['title'] for a in anime_list if a['mal_id'] != target['mal_id']]
-    if len(others) < 3: return None
-    
-    return {
-        "mode": "text", 
-        "id": f"char_{difficulty_mode}_{random.randint(1000,9999)}", 
-        "question": f"الشخصية **{char_name}** (دور: {selected_char['role']}) تظهر في أي أنمي؟", 
-        "answer": title, 
-        "points": points, # نرسل النقاط المحسوبة
-        "options": random.sample(others, 3) + [title]
-    }
-
-# 9. صح أم خطأ
 def generate_true_false(anime_list):
     target = random.choice(anime_list)
     title = target.get('title_english') or target['title']
     is_truth = random.choice([True, False])
     if target.get('year'):
         year = target['year']
-        if is_truth:
-            q = f"أنمي **{title}** صدر عام {year}."
-            ans = "صح"
-        else:
-            fake = year + random.choice([-2, -1, 1, 2])
-            q = f"أنمي **{title}** صدر عام {fake}."
-            ans = "خطأ"
+        if is_truth: q = f"أنمي **{title}** صدر عام {year}."; ans = "صح"
+        else: fake = year + random.choice([-2, -1, 1, 2]); q = f"أنمي **{title}** صدر عام {fake}."; ans = "خطأ"
         return {"mode": "text", "id": f"easy_tf_{random.randint(1000,9999)}", "question": f"صح أم خطأ؟<br>{q}", "answer": ans, "options": ["صح", "خطأ"]}
     return None
 
-# داخل دالة generate_any_question أو داخل get_question مباشرة
-# مثال للتعديل:
-
-def generate_any_question(anime_list, difficulty_str):
-    # قائمة الدوال العادية
-    generators = [
-        generate_sort_year, generate_sort_score, 
-        generate_imposter_question, generate_common_link, 
-        generate_reverse_studio, generate_classic_studio, 
-        generate_classic_year, generate_true_false
-    ]
-    
-    # 30% فرصة أن يكون السؤال عن شخصية (لأننا حسنا المنطق)
-    if random.random() < 0.3:
-        return generate_smart_character(anime_list, difficulty_str)
-    
-    # وإلا اختر سؤالاً عشوائياً آخر
-    gen_func = random.choice(generators)
-    return gen_func(anime_list)
+def generate_any_question(anime_list, diff):
+    generators = [generate_sort_year, generate_sort_score, generate_imposter_question, generate_common_link, generate_reverse_studio, generate_classic_studio, generate_classic_year, generate_true_false]
+    if random.random() < 0.3: return generate_smart_character(anime_list, diff)
+    return random.choice(generators)(anime_list)
 
 # ==========================================
-#  المسارات (Routes)
+#  5. المسارات (Routes)
 # ==========================================
+
+# مسار توليد صورة الكابتشا
+@app.route('/captcha_image')
+def captcha_image():
+    image = ImageCaptcha(width=280, height=90)
+    captcha_text = str(random.randint(1000, 9999))
+    session['captcha'] = captcha_text 
+    data = image.generate(captcha_text)
+    return Response(data, mimetype='image/png')
 
 @app.route('/')
 def home():
-    # الصفحة الرئيسية (فردي / جماعي)
-    return render_template('home.html')
+    user = get_current_user()
+    return render_template('home.html', user=user)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        email = request.form['email']
+        password = request.form['password']
+        confirm_password = request.form['confirm_password']
+        mal_user = request.form.get('mal_username')
+        captcha_input = request.form['captcha']
+
+        # 1. التحقق من الكابتشا
+        if 'captcha' not in session or session['captcha'] != captcha_input:
+            flash("❌ رمز التحقق غير صحيح!", "error")
+            return render_template('register.html')
+
+        # 2. تطابق الباسورد
+        if password != confirm_password:
+            flash("❌ كلمات المرور غير متطابقة!", "error")
+            return render_template('register.html')
+
+        # 3. إنشاء الحساب
+        if create_user(username, email, password, mal_user):
+            # إرسال الإيميل
+            if send_activation_email(email):
+                flash("✅ تم التسجيل! تفقد بريدك لتفعيل الحساب.", "success")
+            else:
+                flash("⚠️ تم التسجيل ولكن فشل إرسال الإيميل.", "warning")
+            return redirect(url_for('login'))
+        else:
+            flash("❌ الاسم أو البريد مستخدم مسبقاً.", "error")
+
+    return render_template('register.html')
+
+@app.route('/confirm_email/<token>')
+def confirm_email(token):
+    try:
+        email = serializer.loads(token, salt='email-confirm', max_age=3600)
+        conn = get_db()
+        conn.execute('UPDATE users SET is_verified = 1 WHERE email = ?', (email,))
+        conn.commit()
+        conn.close()
+        flash("🎉 تم تفعيل الحساب بنجاح! سجل دخولك الآن.", "success")
+    except:
+        flash("❌ رابط التفعيل غير صالح أو منتهي.", "error")
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form['email']
+        pw = request.form['password']
+        user = get_user_by_email(email)
+        
+        if user and check_password_hash(user['password'], pw):
+            # التحقق من التفعيل
+            if user['is_verified'] == 0:
+                flash("⚠️ يجب تفعيل الحساب من الإيميل أولاً!", "warning")
+                return render_template('login.html')
+
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            if user['mal_username']:
+                session['mal_ids'] = fetch_mal_list(user['mal_username'])
+            return redirect(url_for('home'))
+        else:
+            flash("❌ بيانات الدخول خاطئة", "error")
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('home'))
 
 @app.route('/play')
 def play_ui():
-    # اللعب الفردي
-    if 'score' not in session: session['score'] = 0
-    if 'hearts' not in session or session['hearts'] <= 0: 
-        session['hearts'] = 3
-        session['score'] = 0
+    mode = request.args.get('mode', 'random')
+    session['mode'] = mode
+    
+    if mode == 'mal' and not session.get('mal_ids'):
+        flash("يجب ربط حساب MAL لتفعيل هذا الوضع", "error")
+        return redirect(url_for('home'))
+        
+    session['score'] = 0; session['hearts'] = 3
     return render_template('game.html')
-
-@app.route('/multiplayer_lobby')
-def multiplayer_lobby():
-    # صفحة اللوبي الجديدة
-    return render_template('lobby.html')
-
-@app.route('/multiplayer_room/<room_id>')
-def multiplayer_room(room_id):
-    # صفحة الغرفة الفعلية
-    return render_template('room.html', room_id=room_id)
 
 @app.route('/get_question/<difficulty>')
 def get_question(difficulty):
-    # التحقق من القلوب
-    if session.get('hearts', 0) <= 0:
-        return jsonify({"status": "gameover"})
+    if session.get('hearts', 0) <= 0: return jsonify({"status": "gameover"})
 
-    # إعدادات الفلترة حسب الصعوبة
-    target_range = (2, 4)
-    page_range = (1, 5)
+    anime_list = get_anime_batch_smart(difficulty)
     
-    if difficulty == 'easy':
-        target_range = (2, 4); page_range = (1, 3)
-    elif difficulty == 'medium':
-        target_range = (5, 7); page_range = (3, 10)
-    elif difficulty == 'hard':
-        target_range = (8, 10); page_range = (10, 20)
-    elif difficulty == 'otaku':
-        target_range = (11, 12); page_range = (20, 30)
+    if not anime_list:
+        if session.get('mode') == 'mal':
+            return jsonify({"status": "error", "message": "لم نجد أنميات كافية في قائمة MAL الخاصة بك!"})
+        return jsonify({"status": "error", "message": "قاعدة البيانات فارغة"})
 
-    for _ in range(15):
+    for _ in range(5):
         try:
-            page = random.randint(page_range[0], page_range[1])
-            anime_list = get_data_from_api("top/anime", params={"page": page})
-            if not anime_list: continue
-
-            # === هنا كان الخطأ، وتم التصحيح بتمرير (difficulty) ===
             q_data = generate_any_question(anime_list, difficulty)
-            
             if q_data:
                 total_difficulty = calculate_total_difficulty(q_data, anime_list)
-                # التحقق هل السؤال يناسب النطاق المطلوب
-                if target_range[0] <= total_difficulty <= target_range[1]:
-                    q_data['points'] = total_difficulty * 50
-                    if q_data.get('options') and "صح" not in q_data['options']:
-                        random.shuffle(q_data['options'])
-                    return jsonify({"status": "success", "data": q_data})
+                q_data['points'] = q_data.get('points', total_difficulty * 50)
+                if q_data.get('options') and "صح" not in q_data['options']:
+                    random.shuffle(q_data['options'])
+                return jsonify({"status": "success", "data": q_data})
         except: continue
 
-    return jsonify({"status": "error", "message": "Failed to generate appropriate question"})
+    return jsonify({"status": "retry"})
 
 @app.route('/submit_answer', methods=['POST'])
 def submit_answer():
     data = request.json
-    is_correct = data.get('correct')
-    points_worth = data.get('points', 0)
-    
-    if is_correct: session['score'] += points_worth
+    if data.get('correct'): session['score'] += data.get('points', 0)
     else: session['hearts'] -= 1
     session.modified = True
-    
     if session['hearts'] <= 0: return jsonify({"status": "gameover"})
     return jsonify({"status": "continue"})
 
@@ -357,116 +447,53 @@ def submit_answer():
 def gameover():
     score = session.get('score', 0)
     title = "مبتدئ"
-    if score > 1000: title = "أوتاكو هاوي"
-    if score > 3000: title = "أوتاكو محترف"
-    if score > 6000: title = "خبير أنمي"
-    if score > 10000: title = "هوكاغي الأنمي"
+    if score > 1000: title = "هاوي"; 
+    if score > 5000: title = "محترف"
     return render_template('gameover.html', score=score, title=title)
 
-# ==========================================
-#  أحداث الأونلاين (SocketIO Logic - Lobby System)
-# ==========================================
-
-# مخزن الغرف النشطة (في الذاكرة)
+# ... (كود اللوبي) ...
 active_rooms = {}
 
 @socketio.on('connect')
-def on_connect():
-    # عند دخول أي شخص، نرسل له قائمة الغرف المتاحة فوراً
-    emit('update_room_list', get_public_rooms_list())
+def on_connect(): emit('update_room_list', get_public_rooms_list())
 
 @socketio.on('create_room')
 def on_create_room(data):
     room_id = str(random.randint(1000, 9999))
-    username = data['username']
-    room_name = data['room_name']
-    password = data.get('password', '') # يمكن أن تكون فارغة
-    
-    # إنشاء بيانات الغرفة
-    active_rooms[room_id] = {
-        'id': room_id,
-        'name': room_name,
-        'password': password,
-        'host': request.sid,  # هذا اللاعب هو المضيف
-        'players': [{'sid': request.sid, 'name': username, 'score': 0}],
-        'state': 'waiting' # waiting, playing
-    }
-    
+    active_rooms[room_id] = {'id': room_id, 'name': data['room_name'], 'password': data.get('password', ''), 'host': request.sid, 'players': [{'sid': request.sid, 'name': data['username'], 'score': 0}], 'state': 'waiting'}
     join_room(room_id)
     emit('room_created_success', {'roomId': room_id, 'isHost': True})
-    
-    # تحديث القائمة لكل اللاعبين الآخرين في اللوبي
     socketio.emit('update_room_list', get_public_rooms_list())
 
 @socketio.on('join_request')
 def on_join_request(data):
-    room_id = data['roomId']
-    input_pass = data.get('password', '')
-    username = data['username']
-    
-    room = active_rooms.get(room_id)
-    
-    if not room:
-        emit('error_msg', 'هذه الغرفة لم تعد موجودة!')
-        return
-
-    if room['state'] != 'waiting':
-        emit('error_msg', 'التحدي بدأ بالفعل في هذه الغرفة!')
-        return
-        
-    # التحقق من كلمة المرور
-    if room['password'] and room['password'] != input_pass:
-        emit('error_msg', 'كلمة المرور غير صحيحة!')
-        return
-
-    # إضافة اللاعب
-    room['players'].append({'sid': request.sid, 'name': username, 'score': 0})
-    join_room(room_id)
-    
-    emit('join_success', {'roomId': room_id, 'isHost': False})
-    
-    # إشعار من بداخل الغرفة
-    socketio.to(room_id).emit('update_players_in_room', room['players'])
-    
-    # تحديث القائمة العامة (لتغيير العداد مثلاً)
+    room = active_rooms.get(data['roomId'])
+    if not room: emit('error_msg', 'غرفة غير موجودة'); return
+    if room['state'] != 'waiting': emit('error_msg', 'بدأت اللعبة'); return
+    if room['password'] and room['password'] != data.get('password', ''): emit('error_msg', 'كلمة السر خطأ'); return
+    room['players'].append({'sid': request.sid, 'name': data['username'], 'score': 0})
+    join_room(data['roomId'])
+    emit('join_success', {'roomId': data['roomId'], 'isHost': False})
+    socketio.to(data['roomId']).emit('update_players_in_room', room['players'])
     socketio.emit('update_room_list', get_public_rooms_list())
 
 @socketio.on('get_room_details')
 def get_room_details(data):
-    room_id = data['roomId']
-    room = active_rooms.get(room_id)
-    if room:
-        emit('update_players_in_room', room['players'])
+    room = active_rooms.get(data['roomId'])
+    if room: emit('update_players_in_room', room['players'])
 
 @socketio.on('disconnect')
 def on_disconnect():
-    # تنظيف الغرف الفارغة (منطق مبسط)
     to_delete = []
     for r_id, room in active_rooms.items():
         room['players'] = [p for p in room['players'] if p['sid'] != request.sid]
-        if len(room['players']) == 0:
-            to_delete.append(r_id)
-        else:
-            socketio.to(r_id).emit('update_players_in_room', room['players'])
-            
-    for r_id in to_delete:
-        del active_rooms[r_id]
-        
-    if to_delete:
-        socketio.emit('update_room_list', get_public_rooms_list())
+        if not room['players']: to_delete.append(r_id)
+        else: socketio.to(r_id).emit('update_players_in_room', room['players'])
+    for r_id in to_delete: del active_rooms[r_id]
+    if to_delete: socketio.emit('update_room_list', get_public_rooms_list())
 
 def get_public_rooms_list():
-    """تجهيز قائمة الغرف للعرض (بدون كشف كلمات السر)"""
-    public_list = []
-    for r_id, r_data in active_rooms.items():
-        public_list.append({
-            'id': r_id,
-            'name': r_data['name'],
-            'count': len(r_data['players']),
-            'isPrivate': bool(r_data['password']),
-            'state': r_data['state']
-        })
-    return public_list
+    return [{'id': r['id'], 'name': r['name'], 'count': len(r['players']), 'isPrivate': bool(r['password']), 'state': r['state']} for r in active_rooms.values()]
+
 if __name__ == '__main__':
-    # تشغيل السيرفر على المنفذ 5000 وتفعيل وضع التصحيح
     socketio.run(app, debug=True, port=5000)

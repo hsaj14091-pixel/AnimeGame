@@ -176,18 +176,64 @@ def generate_classic_year(anime_list):
         if fake != year: wrong.add(fake)
     return {"mode": "text", "id": f"easy_year_{random.randint(1000,9999)}", "question": f"في أي سنة صدر **{title}**؟", "answer": str(year), "options": list(wrong) + [str(year)]}
 
-# 8. شخصية بسيطة
-def generate_simple_character(anime_list):
+# 8. شخصية ذكية (تعتمد على الصعوبة)
+def generate_smart_character(anime_list, difficulty_mode='medium'):
     target = random.choice(anime_list)
+    
+    # نجلب الشخصيات
     chars = get_data_from_api(f"anime/{target['mal_id']}/characters")
     if not chars: return None
-    pool = [c for c in chars if c['role'] == 'Supporting'] or chars
-    if not pool: return None
-    char_name = random.choice(pool)['character']['name']
+
+    # تصنيف الشخصيات
+    main_chars = [c for c in chars if c['role'] == 'Main']
+    support_chars = [c for c in chars if c['role'] == 'Supporting']
+    
+    selected_char = None
+    points = 100
+
+    # تحديد المنطق بناءً على الصعوبة المطلوبة
+    # 1. إذا كان الوضع سهل أو لا يوجد مساعدين -> خذ شخصية رئيسية
+    if difficulty_mode == 'easy' or (not support_chars and main_chars):
+        if not main_chars: return None # لا يوجد رئيسيين (نادر)
+        selected_char = random.choice(main_chars)
+        points = 150 # نقاط قليلة للسهل
+
+    # 2. الوضع المتوسط -> خذ شخصية مساعدة لكن مشهورة (أول القائمة)
+    elif difficulty_mode == 'medium':
+        if not support_chars: return None
+        # نأخذ من أول 5 شخصيات مساعدة (غالباً يكونون معروفين)
+        top_support = support_chars[:5] 
+        selected_char = random.choice(top_support)
+        points = 300
+
+    # 3. الوضع الصعب/أوتاكو -> خذ شخصية مساعدة مغمورة (من آخر القائمة)
+    else: # hard or otaku
+        if not support_chars: return None
+        # نأخذ من الشخصيات في نـهاية القائمة
+        if len(support_chars) > 5:
+            obscure_support = support_chars[5:] 
+            selected_char = random.choice(obscure_support)
+            points = 500 # نقاط عالية
+        else:
+            selected_char = random.choice(support_chars) # لو القائمة قصيرة
+
+    # تجهيز السؤال
+    char_name = selected_char['character']['name']
+    char_img = selected_char['character']['images']['jpg']['image_url'] # يمكن استخدام صورتها مستقبلاً
     title = target.get('title_english') or target['title']
+    
+    # خيارات الخطأ (أنميات أخرى)
     others = [a.get('title_english') or a['title'] for a in anime_list if a['mal_id'] != target['mal_id']]
     if len(others) < 3: return None
-    return {"mode": "text", "id": f"easy_char_{random.randint(1000,9999)}", "question": f"الشخصية **{char_name}** تظهر في أي أنمي؟", "answer": title, "options": random.sample(others, 3) + [title]}
+    
+    return {
+        "mode": "text", 
+        "id": f"char_{difficulty_mode}_{random.randint(1000,9999)}", 
+        "question": f"الشخصية **{char_name}** (دور: {selected_char['role']}) تظهر في أي أنمي؟", 
+        "answer": title, 
+        "points": points, # نرسل النقاط المحسوبة
+        "options": random.sample(others, 3) + [title]
+    }
 
 # 9. صح أم خطأ
 def generate_true_false(anime_list):
@@ -206,12 +252,23 @@ def generate_true_false(anime_list):
         return {"mode": "text", "id": f"easy_tf_{random.randint(1000,9999)}", "question": f"صح أم خطأ؟<br>{q}", "answer": ans, "options": ["صح", "خطأ"]}
     return None
 
-def generate_any_question(anime_list):
+# داخل دالة generate_any_question أو داخل get_question مباشرة
+# مثال للتعديل:
+
+def generate_any_question(anime_list, difficulty_str):
+    # قائمة الدوال العادية
     generators = [
         generate_sort_year, generate_sort_score, 
-        generate_imposter_question, generate_common_link, generate_reverse_studio,
-        generate_classic_studio, generate_classic_year, generate_simple_character, generate_true_false
+        generate_imposter_question, generate_common_link, 
+        generate_reverse_studio, generate_classic_studio, 
+        generate_classic_year, generate_true_false
     ]
+    
+    # 30% فرصة أن يكون السؤال عن شخصية (لأننا حسنا المنطق)
+    if random.random() < 0.3:
+        return generate_smart_character(anime_list, difficulty_str)
+    
+    # وإلا اختر سؤالاً عشوائياً آخر
     gen_func = random.choice(generators)
     return gen_func(anime_list)
 

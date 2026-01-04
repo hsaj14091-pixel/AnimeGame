@@ -226,12 +226,19 @@
             const correct = currentData.answer;
             
             if(selected === correct) {
-                btn.classList.add('btn-correct');
+                btn.classList.add('btn-correct'); // تلوين زر اللاعب بالأخضر
                 triggerSuccess();
             } else {
-                btn.classList.add('btn-wrong');
-                highlightCorrectBtn(correct);
-                triggerFailure();
+                btn.classList.add('btn-wrong'); // تلوين زر اللاعب بالأحمر
+                highlightCorrectBtn(correct); // تلوين الإجابة الصحيحة بالأخضر
+                
+                // تشغيل صوت الخطأ فوراً
+                soundWrong.currentTime = 0; soundWrong.play();
+
+                // ننتظر 1.5 ثانية قبل إرسال النتيجة للسيرفر لكي يرى اللاعب الخطأ
+                setTimeout(() => {
+                    triggerFailure();
+                }, 1500); 
             }
         }
 
@@ -302,7 +309,6 @@
         }
 
         function triggerFailure() {
-            soundWrong.currentTime = 0; soundWrong.play();
             document.querySelector('.container').classList.add('shake');
             setTimeout(() => document.querySelector('.container').classList.remove('shake'), 500);
             submitResult(false);

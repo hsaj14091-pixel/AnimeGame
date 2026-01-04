@@ -1,10 +1,15 @@
 from flask import Flask, render_template, session, request, jsonify, redirect, url_for
+from flask_socketio import SocketIO, join_room, leave_room, emit
 import random
 import requests
 import json
+import os
 
 app = Flask(__name__)
 app.secret_key = 'Otaku_Math_Difficulty_2026'
+
+# إعدادات SocketIO (محرك الأونلاين)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 COMMON_STUDIOS = ["Toei Animation", "MAPPA", "Madhouse", "Bones", "Sunrise", "Pierrot", "A-1 Pictures", "Wit Studio", "Ufotable", "Studio Ghibli", "J.C.Staff"]
 
@@ -20,7 +25,7 @@ def get_data_from_api(endpoint, params=None):
     except: pass
     return []
 
-# --- دوال التقييم الجديدة ---
+# --- دوال التقييم ---
 def get_popularity_score(anime):
     """تقييم شهرة الأنمي من 1 (مشهور) إلى 6 (مغمور)"""
     pop = anime.get('popularity', 0)
@@ -60,7 +65,6 @@ def calculate_total_difficulty(q_data, anime_list):
     
     type_score = get_question_type_score(mode_key)
     
-    # تحديد شهرة الأنمي
     avg_pop_score = 0
     valid_anime = [a for a in anime_list if a.get('popularity')]
     if valid_anime:
@@ -73,7 +77,7 @@ def calculate_total_difficulty(q_data, anime_list):
     return total
 
 # ==========================================
-#  جميع مولدات الأسئلة (9 دوال)
+#  جميع مولدات الأسئلة (9 دوال - كاملة)
 # ==========================================
 
 # 1. الترتيب الزمني
@@ -203,7 +207,6 @@ def generate_true_false(anime_list):
     return None
 
 def generate_any_question(anime_list):
-    """دالة تختار مولداً عشوائياً من الـ 9 مولدات"""
     generators = [
         generate_sort_year, generate_sort_score, 
         generate_imposter_question, generate_common_link, generate_reverse_studio,
@@ -213,40 +216,36 @@ def generate_any_question(anime_list):
     return gen_func(anime_list)
 
 # ==========================================
-#  المسارات (Routes) - التحديث الجديد
+#  المسارات (Routes)
 # ==========================================
 
 @app.route('/')
 def home():
-    # الآن هذا المسار يعرض القائمة الرئيسية (فردي / جماعي)
+    # الصفحة الرئيسية (فردي / جماعي)
     return render_template('home.html')
 
 @app.route('/play')
 def play_ui():
-    # هذا المسار خاص باللعب الفردي
-    # نعيد تعيين القلوب إذا كان قد خسر سابقاً
+    # اللعب الفردي
     if 'score' not in session: session['score'] = 0
     if 'hearts' not in session or session['hearts'] <= 0: 
         session['hearts'] = 3
-        session['score'] = 0 # تصفير النقاط عند بدء لعبة جديدة
-        
+        session['score'] = 0
     return render_template('game.html')
 
 @app.route('/multiplayer_lobby')
 def multiplayer_lobby():
-    # صفحة مؤقتة للعب الجماعي
-    return """
-    <body style="background:#121212; color:white; text-align:center; font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh;">
-        <div>
-            <h1 style="color:#8e44ad">🚧 قريباً: طور الأونلاين 🚧</h1>
-            <p>نحن نعمل على تجهيز الحلبة للقتال الجماعي!</p>
-            <a href="/" style="color:#f39c12; text-decoration:none; border:1px solid #f39c12; padding:10px 20px; border-radius:20px;">العودة للرئيسية</a>
-        </div>
-    </body>
-    """
+    # صفحة اللوبي الجديدة
+    return render_template('lobby.html')
+
+@app.route('/multiplayer_room/<room_id>')
+def multiplayer_room(room_id):
+    # صفحة الغرفة الفعلية
+    return render_template('room.html', room_id=room_id)
 
 @app.route('/get_question/<difficulty>')
 def get_question(difficulty):
+    # (نفس دالة توليد الأسئلة السابقة تماماً)
     if session.get('hearts', 0) <= 0:
         return jsonify({"status": "gameover"})
 
@@ -304,5 +303,30 @@ def gameover():
     if score > 10000: title = "هوكاغي الأنمي"
     return render_template('gameover.html', score=score, title=title)
 
+# ==========================================
+#  أحداث الأونلاين (SocketIO Events) 🔥
+# ==========================================
+
+@socketio.on('join')
+def on_join(data):
+    username = data['username']
+    room = data['room']
+    join_room(room)
+    # نرسل للجميع في الغرفة أن لاعباً جديداً دخل
+    emit('user_joined', {'username': username}, room=room)
+
+@socketio.on('start_game_signal')
+def on_start_game(data):
+    room = data['room']
+    # نأمر جميع اللاعبين في الغرفة بالانتقال لصفحة اللعب
+    emit('game_started', {'url': '/play_multi'}, room=room)
+
+@socketio.on('update_score')
+def on_update_score(data):
+    # عندما يحصل لاعب على نقاط، نرسلها لخصمه فوراً
+    room = data['room']
+    emit('opponent_score_updated', {'username': data['username'], 'score': data['score']}, room=room)
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    # مهم: تشغيل السيرفر عبر socketio
+    socketio.run(app, debug=True)

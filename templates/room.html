@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>غرفة الانتظار</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
+        .player-list { list-style: none; padding: 0; margin-top: 30px; }
+        .player-item { background: #2c3e50; margin: 10px auto; padding: 15px; border-radius: 10px; max-width: 300px; animation: popIn 0.5s; display: flex; justify-content: space-between; align-items: center; }
+        .status { width: 10px; height: 10px; background: #2ecc71; border-radius: 50%; display: inline-block; }
+        @keyframes popIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    </style>
+</head>
+<body>
+    <h1>الغرفة رقم: <span style="color:#f39c12">{{ room_id }}</span></h1>
+    <p>انتظر دخول صديقك...</p>
+    
+    <ul id="players" class="player-list"></ul>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const username = sessionStorage.getItem('username');
+        const room = "{{ room_id }}";
+
+        // الاتصال بالسيرفر
+        socket.on('connect', () => {
+            socket.emit('join', { username: username, room: room });
+        });
+
+        // استقبال لاعب جديد
+        socket.on('user_joined', (data) => {
+            const ul = document.getElementById('players');
+            const li = document.createElement('li');
+            li.className = 'player-item';
+            li.innerHTML = `<span>${data.username}</span> <span class="status"></span>`;
+            ul.appendChild(li);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>اللوبي | إنشاء غرفة</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: white; text-align: center; display: flex; flex-direction: column; justify-content: center; height: 100vh; margin: 0; }
+        .box { background: #1e1e2e; padding: 40px; border-radius: 20px; width: 90%; max-width: 400px; margin: auto; border: 1px solid #8e44ad; }
+        input { width: 100%; padding: 15px; margin: 10px 0; border-radius: 10px; border: none; background: #333; color: white; font-size: 1.1rem; }
+        button { width: 100%; padding: 15px; background: #8e44ad; color: white; border: none; border-radius: 10px; font-size: 1.2rem; cursor: pointer; font-weight: bold; }
+        button:hover { background: #9b59b6; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1 style="color:#8e44ad">⚔️ ساحة القتال</h1>
+        <input type="text" id="username" placeholder="اسمك المقاتل" required>
+        <input type="text" id="room" placeholder="رقم الغرفة (مثال: 123)" required>
+        <button onclick="joinRoom()">دخول الحلبة</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        function joinRoom() {
+            const username = document.getElementById('username').value;
+            const room = document.getElementById('room').value;
+            if(username && room) {
+                // حفظ البيانات مؤقتاً
+                sessionStorage.setItem('username', username);
+                sessionStorage.setItem('room', room);
+                // الانتقال لغرفة الانتظار
+                window.location.href = `/multiplayer_room/${room}`;
+            } else {
+                alert("اكتب اسمك ورقم الغرفة يا بطل!");
+            }
+        }
+    </script>
+</body>
+</html>

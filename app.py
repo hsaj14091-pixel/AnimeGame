@@ -304,29 +304,106 @@ def gameover():
     return render_template('gameover.html', score=score, title=title)
 
 # ==========================================
-#  أحداث الأونلاين (SocketIO Events) 🔥
+#  أحداث الأونلاين (SocketIO Logic - Lobby System)
 # ==========================================
 
-@socketio.on('join')
-def on_join(data):
+# مخزن الغرف النشطة (في الذاكرة)
+active_rooms = {}
+
+@socketio.on('connect')
+def on_connect():
+    # عند دخول أي شخص، نرسل له قائمة الغرف المتاحة فوراً
+    emit('update_room_list', get_public_rooms_list())
+
+@socketio.on('create_room')
+def on_create_room(data):
+    room_id = str(random.randint(1000, 9999))
     username = data['username']
-    room = data['room']
-    join_room(room)
-    # نرسل للجميع في الغرفة أن لاعباً جديداً دخل
-    emit('user_joined', {'username': username}, room=room)
+    room_name = data['room_name']
+    password = data.get('password', '') # يمكن أن تكون فارغة
+    
+    # إنشاء بيانات الغرفة
+    active_rooms[room_id] = {
+        'id': room_id,
+        'name': room_name,
+        'password': password,
+        'host': request.sid,  # هذا اللاعب هو المضيف
+        'players': [{'sid': request.sid, 'name': username, 'score': 0}],
+        'state': 'waiting' # waiting, playing
+    }
+    
+    join_room(room_id)
+    emit('room_created_success', {'roomId': room_id, 'isHost': True})
+    
+    # تحديث القائمة لكل اللاعبين الآخرين في اللوبي
+    socketio.emit('update_room_list', get_public_rooms_list())
 
-@socketio.on('start_game_signal')
-def on_start_game(data):
-    room = data['room']
-    # نأمر جميع اللاعبين في الغرفة بالانتقال لصفحة اللعب
-    emit('game_started', {'url': '/play_multi'}, room=room)
+@socketio.on('join_request')
+def on_join_request(data):
+    room_id = data['roomId']
+    input_pass = data.get('password', '')
+    username = data['username']
+    
+    room = active_rooms.get(room_id)
+    
+    if not room:
+        emit('error_msg', 'هذه الغرفة لم تعد موجودة!')
+        return
 
-@socketio.on('update_score')
-def on_update_score(data):
-    # عندما يحصل لاعب على نقاط، نرسلها لخصمه فوراً
-    room = data['room']
-    emit('opponent_score_updated', {'username': data['username'], 'score': data['score']}, room=room)
+    if room['state'] != 'waiting':
+        emit('error_msg', 'التحدي بدأ بالفعل في هذه الغرفة!')
+        return
+        
+    # التحقق من كلمة المرور
+    if room['password'] and room['password'] != input_pass:
+        emit('error_msg', 'كلمة المرور غير صحيحة!')
+        return
 
-if __name__ == '__main__':
-    # مهم: تشغيل السيرفر عبر socketio
-    socketio.run(app, debug=True)
+    # إضافة اللاعب
+    room['players'].append({'sid': request.sid, 'name': username, 'score': 0})
+    join_room(room_id)
+    
+    emit('join_success', {'roomId': room_id, 'isHost': False})
+    
+    # إشعار من بداخل الغرفة
+    socketio.to(room_id).emit('update_players_in_room', room['players'])
+    
+    # تحديث القائمة العامة (لتغيير العداد مثلاً)
+    socketio.emit('update_room_list', get_public_rooms_list())
+
+@socketio.on('get_room_details')
+def get_room_details(data):
+    room_id = data['roomId']
+    room = active_rooms.get(room_id)
+    if room:
+        emit('update_players_in_room', room['players'])
+
+@socketio.on('disconnect')
+def on_disconnect():
+    # تنظيف الغرف الفارغة (منطق مبسط)
+    to_delete = []
+    for r_id, room in active_rooms.items():
+        room['players'] = [p for p in room['players'] if p['sid'] != request.sid]
+        if len(room['players']) == 0:
+            to_delete.append(r_id)
+        else:
+            socketio.to(r_id).emit('update_players_in_room', room['players'])
+            
+    for r_id in to_delete:
+        del active_rooms[r_id]
+        
+    if to_delete:
+        socketio.emit('update_room_list', get_public_rooms_list())
+
+def get_public_rooms_list():
+    """تجهيز قائمة الغرف للعرض (بدون كشف كلمات السر)"""
+    public_list = []
+    for r_id, r_data in active_rooms.items():
+        public_list.append({
+            'id': r_id,
+            'name': r_data['name'],
+            'count': len(r_data['players']),
+            'isPrivate': bool(r_data['password']),
+            'state': r_data['state']
+        })
+    return public_list

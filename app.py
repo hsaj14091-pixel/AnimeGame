@@ -407,3 +407,6 @@ def get_public_rooms_list():
             'state': r_data['state']
         })
     return public_list
+if __name__ == '__main__':
+    # تشغيل السيرفر على المنفذ 5000 وتفعيل وضع التصحيح
+    socketio.run(app, debug=True, port=5000)

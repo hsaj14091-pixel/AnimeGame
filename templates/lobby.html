@@ -2,131 +2,193 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>قائمة التحديات | Lobby</title>
+    <title>نادي الأوتاكو | التحديات</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         :root { --bg: #121212; --card: #1e1e2e; --accent: #f39c12; --otaku: #8e44ad; --text: #fff; }
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
         
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-        .title { font-size: 1.8rem; color: var(--otaku); font-weight: bold; }
+        /* تصميم الهيدر الهادئ */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; background: #252530; padding: 15px 25px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); border-bottom: 3px solid var(--otaku); }
+        .title { font-size: 1.5rem; color: var(--otaku); font-weight: bold; display: flex; align-items: center; gap: 10px; }
+        .user-info { font-size: 0.95rem; color: #ccc; display: flex; align-items: center; gap: 10px; }
+        .user-name-display { color: var(--accent); font-weight: bold; font-size: 1.1rem; }
         
-        .btn-create { background: var(--accent); color: #000; padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        .btn-create:hover { background: #e67e22; }
+        /* الأزرار بشكل جديد */
+        .btn-create { background: var(--otaku); color: #fff; padding: 10px 25px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+        .btn-create:hover { background: #9b59b6; transform: translateY(-2px); }
 
-        /* قائمة الغرف */
-        .rooms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        /* شبكة الغرف */
+        .rooms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
         
         .room-card { 
             background: var(--card); padding: 20px; border-radius: 15px; 
-            border: 1px solid #333; position: relative; transition: 0.3s;
+            border: 1px solid #333; transition: 0.3s;
+            display: flex; flex-direction: column; justify-content: space-between;
         }
-        .room-card:hover { transform: translateY(-5px); border-color: var(--otaku); }
+        .room-card:hover { transform: translateY(-5px); border-color: var(--accent); box-shadow: 0 5px 15px rgba(243, 156, 18, 0.15); }
         
-        .room-header { display: flex; justify-content: space-between; margin-bottom: 15px; }
-        .room-name { font-size: 1.2rem; font-weight: bold; }
-        .lock-icon { color: #e74c3c; }
+        .room-header { display: flex; justify-content: space-between; margin-bottom: 10px; align-items: center; }
+        .room-name { font-size: 1.2rem; font-weight: bold; color: #fff; }
+        .room-badge { font-size: 0.8rem; padding: 4px 12px; border-radius: 20px; background: #333; }
+        .badge-public { color: #2ecc71; border: 1px solid #2ecc71; background: rgba(46, 204, 113, 0.1); }
+        .badge-private { color: #e74c3c; border: 1px solid #e74c3c; background: rgba(231, 76, 60, 0.1); }
         
-        .room-info { color: #aaa; font-size: 0.9rem; margin-bottom: 15px; }
-        .join-btn { width: 100%; padding: 10px; background: #2c3e50; border: none; color: white; border-radius: 8px; cursor: pointer; }
-        .join-btn:hover { background: var(--otaku); }
+        .room-info { color: #aaa; font-size: 0.9rem; margin-bottom: 15px; border-top: 1px solid #333; padding-top: 10px; margin-top: 10px; display: flex; gap: 15px; }
+        
+        .join-btn { width: 100%; padding: 12px; background: #2c3e50; border: none; color: white; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .join-btn:hover { background: var(--accent); color: #000; }
 
-        /* نافذة إنشاء غرفة (Modal) */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; }
-        .modal-content { background: var(--card); padding: 30px; border-radius: 15px; width: 90%; max-width: 400px; text-align: center; }
-        .input-field { width: 100%; padding: 12px; margin: 10px 0; background: #121212; border: 1px solid #444; color: white; border-radius: 5px; box-sizing: border-box; }
+        /* النوافذ المنبثقة (Modals) */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-content { background: var(--card); padding: 40px; border-radius: 20px; width: 90%; max-width: 400px; text-align: center; border: 1px solid var(--otaku); box-shadow: 0 0 30px rgba(142, 68, 173, 0.2); animation: popUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         
+        .input-field { width: 100%; padding: 15px; margin: 15px 0; background: #121212; border: 2px solid #444; color: white; border-radius: 10px; box-sizing: border-box; font-size: 1.1rem; text-align: center; transition: 0.3s; }
+        .input-field:focus { border-color: var(--otaku); outline: none; }
+        
+        .modal-title { margin-top: 0; color: var(--accent); font-size: 1.5rem; }
+        
+        @keyframes popUp { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <div class="title">⚔️ صالة التحديات</div>
-        <button class="btn-create" onclick="openCreateModal()">+ إنشاء تحدي جديد</button>
+        <div class="title">🧩 نادي الأوتاكو</div>
+        <div class="user-info">
+            مرحباً يا <span id="display-username" class="user-name-display">---</span>
+        </div>
+        <button class="btn-create" onclick="openCreateModal()"><span>+</span> غرفة جديدة</button>
     </div>
 
     <div id="rooms-container" class="rooms-grid">
-        <p style="color:#777; width:100%">جاري البحث عن غرف...</p>
+        <p style="color:#777; width:100%; grid-column: span 3; text-align:center">جاري تحميل الغرف المتاحة...</p>
+    </div>
+
+    <div id="name-modal" class="modal" style="display: flex;">
+        <div class="modal-content">
+            <h2 class="modal-title">مرحباً بك! 👋</h2>
+            <p style="color:#aaa">سجل اسمك للانضمام إلى التحديات</p>
+            <input type="text" id="username-input" class="input-field" placeholder="اكتب اسمك أو لقبك هنا..." autocomplete="off">
+            <button class="btn-create" onclick="saveUsername()" style="width:100%; justify-content:center;">حفظ وبدء</button>
+        </div>
     </div>
 
     <div id="create-modal" class="modal">
         <div class="modal-content">
-            <h3 style="margin-top:0">إعداد التحدي</h3>
-            <input type="text" id="new-room-name" class="input-field" placeholder="اسم الغرفة (مثال: قراصنة قبعة القش)">
-            <input type="text" id="new-room-pass" class="input-field" placeholder="كلمة مرور (اختياري)">
-            <br><br>
-            <button class="btn-create" onclick="createRoom()">إنشاء</button>
-            <button class="join-btn" onclick="closeModal()" style="margin-top:10px; background:transparent">إلغاء</button>
+            <h3 style="color:white">إعداد جلسة جديدة 🎲</h3>
+            <input type="text" id="new-room-name" class="input-field" placeholder="اسم الغرفة (مثال: تحدي ون بيس)">
+            <input type="password" id="new-room-pass" class="input-field" placeholder="كلمة سر (اختياري)">
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <button class="btn-create" onclick="createRoom()" style="flex:2; justify-content:center;">إنشاء</button>
+                <button class="join-btn" onclick="closeModal('create-modal')" style="flex:1; background:transparent; border:1px solid #555">إلغاء</button>
+            </div>
         </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script>
         const socket = io();
-        const username = prompt("أدخل اسمك يا بطل:", "Otaku Player") || "مجهول";
-        sessionStorage.setItem('username', username);
+        let currentUsername = sessionStorage.getItem('username');
 
-        // استقبال قائمة الغرف
+        // === 1. منطق الاسم ===
+        if (currentUsername) {
+            document.getElementById('name-modal').style.display = 'none';
+            document.getElementById('display-username').innerText = currentUsername;
+        }
+
+        function saveUsername() {
+            const input = document.getElementById('username-input').value.trim();
+            if (!input) return alert("الرجاء كتابة اسم للدخول");
+            
+            currentUsername = input;
+            sessionStorage.setItem('username', currentUsername);
+            document.getElementById('display-username').innerText = currentUsername;
+            document.getElementById('name-modal').style.display = 'none';
+        }
+        
+        document.getElementById('username-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') saveUsername();
+        });
+
+        // === 2. منطق الغرف ===
         socket.on('update_room_list', (rooms) => {
             const container = document.getElementById('rooms-container');
             container.innerHTML = '';
             
             if(rooms.length === 0) {
-                container.innerHTML = '<p style="color:#777">لا توجد غرف نشطة حالياً. كن الأول وأنشئ غرفة!</p>';
+                container.innerHTML = '<div style="grid-column: span 3; text-align: center; padding: 40px; color: #666;"><h4>لا توجد جلسات نشطة حالياً 🍃</h4><p>كن الأول وأنشئ غرفة جديدة!</p></div>';
                 return;
             }
 
             rooms.forEach(room => {
-                const isLocked = room.isPrivate ? '<span class="lock-icon">🔒 خاص</span>' : '<span style="color:#2ecc71">🔓 عام</span>';
+                const badge = room.isPrivate 
+                    ? '<span class="room-badge badge-private">🔒 خاص</span>' 
+                    : '<span class="room-badge badge-public">🔓 عام</span>';
+                
+                const btnText = room.state === 'playing' ? 'جاري التحدي...' : 'انضمام';
+                const btnDisabled = room.state === 'playing' ? 'disabled style="opacity:0.5; cursor:not-allowed"' : '';
                 
                 container.innerHTML += `
                     <div class="room-card">
-                        <div class="room-header">
-                            <span class="room-name">${room.name}</span>
-                            ${isLocked}
+                        <div>
+                            <div class="room-header">
+                                <span class="room-name">${room.name}</span>
+                                ${badge}
+                            </div>
+                            <div class="room-info">
+                                <span>👤 ${room.count}/2</span>
+                                <span>🎲 الحالة: ${room.state === 'waiting' ? 'انتظار' : 'بدأ'}</span>
+                            </div>
                         </div>
-                        <div class="room-info">
-                            اللاعبون: ${room.count}/2
-                        </div>
-                        <button class="join-btn" onclick="attemptJoin('${room.id}', ${room.isPrivate})">دخول</button>
+                        <button class="join-btn" onclick="attemptJoin('${room.id}', ${room.isPrivate})" ${btnDisabled}>${btnText}</button>
                     </div>
                 `;
             });
         });
 
-        // دوال إنشاء الغرفة
-        function openCreateModal() { document.getElementById('create-modal').style.display = 'flex'; }
-        function closeModal() { document.getElementById('create-modal').style.display = 'none'; }
+        function openCreateModal() { 
+            if(!currentUsername) return document.getElementById('name-modal').style.display = 'flex';
+            document.getElementById('create-modal').style.display = 'flex'; 
+        }
+        
+        function closeModal(id) { 
+            document.getElementById(id).style.display = 'none'; 
+        }
         
         function createRoom() {
             const name = document.getElementById('new-room-name').value;
             const pass = document.getElementById('new-room-pass').value;
-            if(!name) return alert("اختر اسماً للغرفة!");
+            if(!name) return alert("الرجاء اختيار اسم للغرفة");
             
-            socket.emit('create_room', { username: username, room_name: name, password: pass });
+            socket.emit('create_room', { username: currentUsername, room_name: name, password: pass });
         }
 
         socket.on('room_created_success', (data) => {
-            sessionStorage.setItem('isHost', data.isHost); // نخزن أنه هو المضيف
+            sessionStorage.setItem('isHost', 'true');
             window.location.href = `/multiplayer_room/${data.roomId}`;
         });
 
-        // دوال الانضمام
         function attemptJoin(roomId, isPrivate) {
+            if(!currentUsername) {
+                document.getElementById('name-modal').style.display = 'flex';
+                return;
+            }
+            
             let password = '';
             if(isPrivate) {
-                password = prompt("هذه الغرفة خاصة، أدخل كلمة المرور:");
+                password = prompt("هذه غرفة خاصة، الرجاء إدخال كلمة المرور:");
                 if(password === null) return;
             }
-            socket.emit('join_request', { roomId: roomId, password: password, username: username });
+            socket.emit('join_request', { roomId: roomId, password: password, username: currentUsername });
         }
 
         socket.on('join_success', (data) => {
-            sessionStorage.setItem('isHost', false); // هذا لاعب ضيف
+            sessionStorage.setItem('isHost', 'false');
             window.location.href = `/multiplayer_room/${data.roomId}`;
         });
 
-        socket.on('error_msg', (msg) => { alert("خطأ: " + msg); });
+        socket.on('error_msg', (msg) => { alert("تنبيه: " + msg); });
     </script>
 </body>
 </html>

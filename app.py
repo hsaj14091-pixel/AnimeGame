@@ -302,10 +302,11 @@ def multiplayer_room(room_id):
 
 @app.route('/get_question/<difficulty>')
 def get_question(difficulty):
-    # (نفس دالة توليد الأسئلة السابقة تماماً)
+    # التحقق من القلوب
     if session.get('hearts', 0) <= 0:
         return jsonify({"status": "gameover"})
 
+    # إعدادات الفلترة حسب الصعوبة
     target_range = (2, 4)
     page_range = (1, 5)
     
@@ -324,10 +325,12 @@ def get_question(difficulty):
             anime_list = get_data_from_api("top/anime", params={"page": page})
             if not anime_list: continue
 
-            q_data = generate_any_question(anime_list)
+            # === هنا كان الخطأ، وتم التصحيح بتمرير (difficulty) ===
+            q_data = generate_any_question(anime_list, difficulty)
             
             if q_data:
                 total_difficulty = calculate_total_difficulty(q_data, anime_list)
+                # التحقق هل السؤال يناسب النطاق المطلوب
                 if target_range[0] <= total_difficulty <= target_range[1]:
                     q_data['points'] = total_difficulty * 50
                     if q_data.get('options') and "صح" not in q_data['options']:

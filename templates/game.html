@@ -119,29 +119,31 @@
         </div>
 
         <div id="difficulty-menu">
-            <h2 style="color:white; margin-bottom:10px; font-size:1.2rem">تخصيص الأسئلة:</h2>
-            <div class="filters-container">
-                <label class="filter-option"><input type="checkbox" value="character" checked> شخصيات</label>
-                <label class="filter-option"><input type="checkbox" value="studio" checked> استوديوهات</label>
-                <label class="filter-option"><input type="checkbox" value="year" checked> تواريخ</label>
-                <label class="filter-option"><input type="checkbox" value="score" checked> تقييمات</label>
-                <label class="filter-option"><input type="checkbox" value="general" checked> عام</label>
-            </div>
-            <h3 style="color:white; margin:15px 0 10px">اختر الصعوبة:</h3>
-            
-            <button class="diff-btn btn-easy" onclick="prepareGame('easy')">
-                <span>سهل</span> <span class="points-hint">100-200 نقطة</span>
-            </button>
-            <button class="diff-btn btn-medium" onclick="prepareGame('medium')">
-                <span>متوسط</span> <span class="points-hint">250-350 نقطة</span>
-            </button>
-            <button class="diff-btn btn-hard" onclick="prepareGame('hard')">
-                <span>صعب</span> <span class="points-hint">400-500 نقطة</span>
-            </button>
-            <button class="diff-btn btn-otaku" onclick="prepareGame('otaku')">
-                <span>😈 أوتاكو</span> <span class="points-hint">600+ نقطة</span>
-            </button>
-        </div>
+    <h2 style="color:white; margin-bottom:10px; font-size:1.2rem">تخصيص الأسئلة:</h2>
+    <div class="filters-container">
+        <label class="filter-option"><input type="checkbox" value="character" checked> شخصيات</label>
+        <label class="filter-option"><input type="checkbox" value="studio" checked> استوديوهات</label>
+        <label class="filter-option"><input type="checkbox" value="year" checked> تواريخ</label>
+        <label class="filter-option"><input type="checkbox" value="score" checked> تقييمات</label>
+        <label class="filter-option"><input type="checkbox" value="general" checked> عام</label>
+    </div>
+    <h3 style="color:white; margin:15px 0 10px">اختر الصعوبة:</h3>
+    
+    <button class="diff-btn btn-easy" onclick="prepareGame('easy')">
+        <span>سهل</span> <span class="points-hint">100-200 نقطة</span>
+    </button>
+    <button class="diff-btn btn-medium" onclick="prepareGame('medium')">
+        <span>متوسط</span> <span class="points-hint">250-350 نقطة</span>
+    </button>
+    <button class="diff-btn btn-hard" onclick="prepareGame('hard')">
+        <span>صعب</span> <span class="points-hint">400-500 نقطة</span>
+    </button>
+    <button class="diff-btn btn-otaku" onclick="prepareGame('otaku')">
+        <span>😈 أوتاكو</span> <span class="points-hint">600+ نقطة</span>
+    </button>
+</div>
+
+<div id="loader" class="loader loading-dots">جاري تجهيز الأسئلة</div>
 
     <script>
         let currentData = null;

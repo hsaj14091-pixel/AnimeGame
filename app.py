@@ -412,23 +412,24 @@ def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
         try:
             target = random.choice(anime_list)
             
-            # جلب الأغنية + الاسم الحقيقي
+            # 1. نحدد الاسم من قاعدتك أنت (لضمان أنه بالإنجليزية ومطابق لباقي الخيارات)
+            local_title = target.get('title_english') or target['title']
+            
+            # 2. نجلب الأغنية
             aud = get_animethemes_audio(target['mal_id'], allowed_types)
             
             if aud:
-                # === التصحيح الجذري ===
-                # نعتمد الاسم القادم من رابط الأغنية كإجابة صحيحة
-                correct_title = aud['real_title'] 
-                # ======================
+                # طباعة للتأكد في الشاشة السوداء (تساعدك تعرف الخلل لو تكرر)
+                print(f"DEBUG: Playing {local_title} (ID: {target['mal_id']})")
 
-                # نختار خيارات خاطئة عشوائية من القائمة
+                # 3. نختار الخيارات الخاطئة
                 others = [a for a in anime_list if a['mal_id'] != target['mal_id']]
                 if len(others) < 3: continue
                 
                 wrong_options = random.sample([a.get('title_english') or a['title'] for a in others], 3)
                 
-                # ندمج الخيارات
-                final_options = wrong_options + [correct_title]
+                # 4. ندمج الخيارات (الاسم المحلي + الخطأ)
+                final_options = wrong_options + [local_title]
                 random.shuffle(final_options)
                 
                 import time
@@ -439,13 +440,11 @@ def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
                     "id": f"aud_{random.randint(1000,9999)}",
                     "question": f"لمن تعود أغنية الـ **{aud['info']}** هذه؟",
                     "audio_url": clean_url,
-                    "answer": correct_title, # الإجابة الآن مطابقة للصوت 100%
+                    "answer": local_title, # استخدام الاسم المحلي
                     "options": final_options,
                     "points": 400
                 }
-        except Exception as e:
-            print(f"Error: {e}")
-            continue
+        except: continue
     return None
 # ==========================
 def generate_true_false(anime_list):

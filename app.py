@@ -167,10 +167,13 @@ def get_popularity_score(anime):
     return 6
 @app.route('/set_filters', methods=['POST'])
 def set_filters():
-    data = request.json
-    filters = data.get('filters', [])
-    session['filters'] = filters
-    return jsonify({"status": "saved"})
+    try:
+        data = request.json
+        filters = data.get('filters', [])
+        session['filters'] = filters
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 def get_question_type_score(mode):
     scores = {'tf': 1, 'char': 2, 'year': 3, 'imposter': 4, 'link': 4, 'studio': 5, 'sorting': 6}
     return scores.get(mode, 3)
@@ -318,19 +321,39 @@ def generate_true_false(anime_list):
     return None
 
 def generate_any_question(anime_list, diff):
-    # جلب الفلاتر من الجلسة، إذا لم توجد نستخدم الكل
+    # جلب الفلاتر المختارة من الجلسة
     selected_filters = session.get('filters', [])
     
-    # تحديد المولدات المسموح بها بناءً على الفلتر
-    available_generators = get_allowed_generators(selected_filters)
+    # خريطة المولدات
+    generators_map = {
+        'character': [generate_smart_character, generate_common_link],
+        'studio': [generate_imposter_question, generate_reverse_studio, generate_classic_studio],
+        'year': [generate_sort_year, generate_classic_year],
+        'score': [generate_sort_score],
+        'general': [generate_true_false]
+    }
     
-    # اختيار دالة عشوائية من القائمة المصفاة
-    generator_func = random.choice(available_generators)
+    # تجميع الدوال المسموح بها
+    allowed_funcs = []
+    if not selected_filters:
+        # إذا لم يحدد شيئاً نختار كل الدوال
+        for funcs in generators_map.values():
+            allowed_funcs.extend(funcs)
+    else:
+        for f_type in selected_filters:
+            if f_type in generators_map:
+                allowed_funcs.extend(generators_map[f_type])
     
-    # التعامل الخاص مع دالة الشخصيات لأنها تحتاج معامل diff
+    # إذا كانت القائمة فارغة لأي سبب، نضع كل الدوال كاحتياط
+    if not allowed_funcs:
+        for funcs in generators_map.values():
+            allowed_funcs.extend(funcs)
+
+    # اختيار دالة عشوائية
+    generator_func = random.choice(allowed_funcs)
+    
     if generator_func == generate_smart_character:
         return generator_func(anime_list, diff)
-    
     return generator_func(anime_list)
 
 # ==========================================

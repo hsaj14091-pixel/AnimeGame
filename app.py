@@ -447,7 +447,7 @@ def generate_any_question(anime_list, diff):
     
     return generator_func(anime_list)
 
-# ==========================================
+
 # ==========================================
 #  5. المسارات (Routes)
 # ==========================================
@@ -609,7 +609,7 @@ def logout():
 
 # خريطة تربط نوع الفلتر بدوال التوليد المناسبة
 GENERATORS_MAP = {
-    'character': [generate_smart_character, generate_common_link], # أسئلة الشخصيات والروابط
+    'character': [generate_smart_character, generate_common_link, lambda lst: generate_image_character(lst, 'normal'), lambda lst: generate_image_character(lst, 'silhouette')],
     'studio': [generate_imposter_question, generate_reverse_studio, generate_classic_studio], # أسئلة الاستوديوهات
     'year': [generate_sort_year, generate_classic_year], # أسئلة السنوات
     'score': [generate_sort_score], # أسئلة التقييم

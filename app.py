@@ -452,6 +452,7 @@ def generate_any_question(anime_list, diff):
         # اختيار دالة واحدة عشوائية
         generator_func = random.choice(available_generators)
         
+
         # تنفيذ الدالة (مع مراعاة أن دالة الشخصيات تحتاج diff)
         if generator_func == generate_smart_character:
             return generator_func(anime_list, diff)

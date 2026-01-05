@@ -179,15 +179,7 @@ def get_popularity_score(anime):
     if pop <= 1500: return 4
     if pop <= 3000: return 5
     return 6
-@app.route('/set_filters', methods=['POST'])
-def set_filters():
-    try:
-        data = request.json
-        filters = data.get('filters', [])
-        session['filters'] = filters
-        return jsonify({"status": "success"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+
 def get_question_type_score(mode):
     scores = {'tf': 1, 'char': 2, 'year': 3, 'imposter': 4, 'link': 4, 'studio': 5, 'sorting': 6}
     return scores.get(mode, 3)

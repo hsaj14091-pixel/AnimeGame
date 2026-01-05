@@ -378,77 +378,59 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
 
 # --- دوال التوليد (يجب أن تكون هنا بالأعلى) ---
 # === دوال الصوت الجديدة ===
-def get_animethemes_audio(mal_id, title, allowed_types):
+# ==========================================
+#  دالة جلب الصوت من iTunes (البديل السريع)
+# ==========================================
+def get_itunes_audio(anime_title):
     try:
-        # === المحاولة 1: البحث الدقيق بالرقم (ID) ===
-        url = f"https://api.animethemes.moe/anime?filter[resources][site]=myanimelist&filter[resources][external_id]={mal_id}&include=animethemes.animethemeentries.videos,animethemes.song.artists"
-        resp = requests.get(url, timeout=3)
+        # تنظيف الاسم لضمان نتائج أفضل (نحذف ما بعد النقطتين مثل : Season 2)
+        clean_title = anime_title.split(':')[0].split('(')[0].strip()
+        search_term = f"{clean_title} anime opening"
         
-        target_anime = None
-        if resp.status_code == 200:
-            data = resp.json().get('anime', [])
-            if data: target_anime = data[0]
-
-        # === المحاولة 2: البحث بالاسم (إذا فشل الرقم) ===
-        if not target_anime:
-            # print(f"DEBUG: ID failed, trying title: {title}")
-            search_url = "https://api.animethemes.moe/search"
-            # نستخدم params ليتولى requests تشفير الاسم والرموز تلقائياً
-            params = {
-                "q": title,
-                "fields[search]": "anime",
-                "include": "animethemes.animethemeentries.videos,animethemes.song.artists"
-            }
-            resp_search = requests.get(search_url, params=params, timeout=3)
-            if resp_search.status_code == 200:
-                search_data = resp_search.json().get('search', {}).get('anime', [])
-                if search_data: target_anime = search_data[0]
-
-        # إذا فشلت المحاولتين، نرجع None
-        if not target_anime: return None
-
-        # === استخراج الفيديو والبيانات ===
-        real_title = target_anime.get('name')
-        themes = target_anime.get('animethemes', [])
-        valid_themes = [t for t in themes if t.get('type') in allowed_types]
+        # البحث في iTunes
+        url = "https://itunes.apple.com/search"
+        params = {
+            "term": search_term,
+            "media": "music",
+            "limit": 5  # نجلب 5 نتائج
+        }
         
-        if not valid_themes: return None
+        resp = requests.get(url, params=params, timeout=2)
+        if resp.status_code != 200: return None
         
-        selected = random.choice(valid_themes)
-        entries = selected.get('animethemeentries', [])
-        if not entries: return None
+        results = resp.json().get('results', [])
+        if not results: return None
         
-        video = entries[0].get('videos', [])[0]
-        
-        song = selected.get('song', {})
-        song_title = song.get('title') or "Unknown"
-        artists = song.get('artists', [])
-        artist = artists[0].get('name') if artists else "Unknown"
+        # نختار أول نتيجة عشوائية من الـ 5 لتقليل التكرار
+        track = random.choice(results)
         
         return {
-            "link": video.get('link'),
-            "info": selected.get('type'),
-            "real_title": real_title,
-            "song_name": song_title,
-            "artist": artist
+            "link": track.get('previewUrl'), # رابط ملف الصوت المباشر (m4a)
+            "info": "OST / OP / ED",
+            "real_title": anime_title, 
+            "song_name": track.get('trackName'),
+            "artist": track.get('artistName')
         }
-
+        
     except Exception as e:
-        print(f"Audio Error: {e}")
+        print(f"iTunes Error: {e}")
         return None
 
-
+# ==========================================
+#  دالة توليد السؤال (تحديث لاستخدام iTunes)
+# ==========================================
 def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
-    for _ in range(5): # 5 محاولات
+    # iTunes لا يفرق بين OP و ED بدقة، هو يبحث عن الأغاني المشهورة للأنمي
+    for _ in range(5): 
         try:
             target = random.choice(anime_list)
             local_title = target.get('title_english') or target['title']
             
-            # 🟢 التغيير هنا: نرسل local_title للدالة الجديدة
-            aud = get_animethemes_audio(target['mal_id'], local_title, allowed_types)
+            # نستخدم دالة iTunes الجديدة
+            aud = get_itunes_audio(local_title)
             
-            if aud:
-                # التحقق من وجود أغاني كافية للخيارات
+            if aud and aud['link']: # تأكدنا أن الرابط موجود
+                
                 others = [a for a in anime_list if a['mal_id'] != target['mal_id']]
                 if len(others) < 3: continue
                 
@@ -463,16 +445,17 @@ def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
                 return {
                     "mode": "audio",
                     "id": f"aud_{random.randint(1000,9999)}",
-                    "question": f"لمن تعود أغنية الـ **{aud['info']}** هذه؟",
+                    "question": f"لمن تعود هذه الأغنية؟ <br><small>({aud['song_name']} by {aud['artist']})</small>",
                     "audio_url": clean_url,
                     "answer": local_title,
                     "options": final_options,
-                    "points": 400
+                    "points": 300
                 }
         except Exception as e:
             print(f"Gen Loop Error: {e}")
             continue
     return None
+
 # ==========================
 def generate_true_false(anime_list):
     try:

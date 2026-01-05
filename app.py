@@ -165,7 +165,12 @@ def get_popularity_score(anime):
     if pop <= 1500: return 4
     if pop <= 3000: return 5
     return 6
-
+@app.route('/set_filters', methods=['POST'])
+def set_filters():
+    data = request.json
+    filters = data.get('filters', [])
+    session['filters'] = filters
+    return jsonify({"status": "saved"})
 def get_question_type_score(mode):
     scores = {'tf': 1, 'char': 2, 'year': 3, 'imposter': 4, 'link': 4, 'studio': 5, 'sorting': 6}
     return scores.get(mode, 3)
@@ -313,9 +318,20 @@ def generate_true_false(anime_list):
     return None
 
 def generate_any_question(anime_list, diff):
-    generators = [generate_sort_year, generate_sort_score, generate_imposter_question, generate_common_link, generate_reverse_studio, generate_classic_studio, generate_classic_year, generate_true_false]
-    if random.random() < 0.3: return generate_smart_character(anime_list, diff)
-    return random.choice(generators)(anime_list)
+    # جلب الفلاتر من الجلسة، إذا لم توجد نستخدم الكل
+    selected_filters = session.get('filters', [])
+    
+    # تحديد المولدات المسموح بها بناءً على الفلتر
+    available_generators = get_allowed_generators(selected_filters)
+    
+    # اختيار دالة عشوائية من القائمة المصفاة
+    generator_func = random.choice(available_generators)
+    
+    # التعامل الخاص مع دالة الشخصيات لأنها تحتاج معامل diff
+    if generator_func == generate_smart_character:
+        return generator_func(anime_list, diff)
+    
+    return generator_func(anime_list)
 
 # ==========================================
 #  5. المسارات (Routes)
@@ -474,7 +490,30 @@ def change_password():
 def logout():
     session.clear()
     return redirect(url_for('home'))
+# ... (بعد تعريف COMMON_STUDIOS)
 
+# خريطة تربط نوع الفلتر بدوال التوليد المناسبة
+GENERATORS_MAP = {
+    'character': [generate_smart_character, generate_common_link], # أسئلة الشخصيات والروابط
+    'studio': [generate_imposter_question, generate_reverse_studio, generate_classic_studio], # أسئلة الاستوديوهات
+    'year': [generate_sort_year, generate_classic_year], # أسئلة السنوات
+    'score': [generate_sort_score], # أسئلة التقييم
+    'general': [generate_true_false] # صح أو خطأ
+}
+
+# دالة مساعدة لدمج الفلاتر المختارة
+def get_allowed_generators(selected_filters):
+    if not selected_filters: # إذا لم يختار اللاعب شيئاً، نرجع كل شيء
+        all_gens = []
+        for gens in GENERATORS_MAP.values():
+            all_gens.extend(gens)
+        return list(set(all_gens)) # إزالة التكرار إن وجد
+    
+    allowed = []
+    for key in selected_filters:
+        if key in GENERATORS_MAP:
+            allowed.extend(GENERATORS_MAP[key])
+    return allowed if allowed else get_allowed_generators(None) # احتياط
 
 @app.route('/get_question/<difficulty>')
 def get_question(difficulty):

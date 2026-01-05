@@ -64,6 +64,17 @@
             60% { content: '..'; }
             80%, 100% { content: '...'; }
         }
+/* تنسيق الفلاتر الجديد */
+        .filters-container {
+            display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
+            margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 10px;
+        }
+        .filter-option {
+            background: #2c2c3e; padding: 8px 15px; border-radius: 20px;
+            cursor: pointer; border: 1px solid var(--accent); transition: 0.2s; user-select: none; font-size: 0.9rem;
+        }
+        .filter-option:hover { background: #3d3d55; }
+        .filter-option input { margin-left: 5px; transform: scale(1.2); }
     </style>
 </head>
 <body>
@@ -84,31 +95,29 @@
         </div>
 
         <div id="difficulty-menu">
-            <h2 style="color:white; margin-bottom:10px">اختر مسارك:</h2>
-            <button class="diff-btn btn-easy" onclick="loadQuestion('easy')">
+            <h2 style="color:white; margin-bottom:10px; font-size:1.2rem">تخصيص الأسئلة:</h2>
+            <div class="filters-container">
+                <label class="filter-option"><input type="checkbox" value="character" checked> شخصيات</label>
+                <label class="filter-option"><input type="checkbox" value="studio" checked> استوديوهات</label>
+                <label class="filter-option"><input type="checkbox" value="year" checked> تواريخ</label>
+                <label class="filter-option"><input type="checkbox" value="score" checked> تقييمات</label>
+                <label class="filter-option"><input type="checkbox" value="general" checked> عام</label>
+            </div>
+            <h3 style="color:white; margin:15px 0 10px">اختر الصعوبة:</h3>
+            
+            <button class="diff-btn btn-easy" onclick="prepareGame('easy')">
                 <span>سهل</span> <span class="points-hint">100-200 نقطة</span>
             </button>
-            <button class="diff-btn btn-medium" onclick="loadQuestion('medium')">
+            <button class="diff-btn btn-medium" onclick="prepareGame('medium')">
                 <span>متوسط</span> <span class="points-hint">250-350 نقطة</span>
             </button>
-            <button class="diff-btn btn-hard" onclick="loadQuestion('hard')">
+            <button class="diff-btn btn-hard" onclick="prepareGame('hard')">
                 <span>صعب</span> <span class="points-hint">400-500 نقطة</span>
             </button>
-            <button class="diff-btn btn-otaku" onclick="loadQuestion('otaku')">
+            <button class="diff-btn btn-otaku" onclick="prepareGame('otaku')">
                 <span>😈 أوتاكو</span> <span class="points-hint">600+ نقطة</span>
             </button>
         </div>
-
-        <div id="loader" class="loader">
-            جاري تجهيز التحدي<span class="loading-dots"></span> 🍥
-        </div>
-
-        <div id="question-area">
-            <div class="timer-container"><div class="timer-bar" id="timer-bar"></div></div>
-            <h2 id="q-text" class="question-text"></h2>
-            <div id="dynamic-content"></div>
-        </div>
-    </div>
 
     <script>
         let currentData = null;
@@ -123,7 +132,34 @@
         soundCorrect.volume = 0.8;
         soundWrong.volume = 0.6;
         soundTimeout.volume = 0.7;
+	// هذه هي الدالة الجديدة التي سألت عنها
+        function prepareGame(difficulty) {
+            // 1. تجميع الفلاتر
+            const checkboxes = document.querySelectorAll('.filters-container input:checked');
+            let selectedFilters = Array.from(checkboxes).map(cb => cb.value);
 
+            if (selectedFilters.length === 0) {
+                alert("يجب اختيار نوع واحد من الأسئلة على الأقل!");
+                return;
+            }
+
+            // 2. إخفاء القائمة وإظهار التحميل
+            document.getElementById('difficulty-menu').style.display = 'none';
+            document.getElementById('loader').style.display = 'block';
+
+            // 3. إرسال الفلاتر للسيرفر ثم بدء اللعبة
+            fetch('/set_filters', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ filters: selectedFilters })
+            })
+            .then(res => res.json())
+            .then(data => {
+                loadQuestion(difficulty); // الآن نستدعي الدالة الأصلية
+            });
+        }
+
+        // هنا تأتي دالة loadQuestion القديمة كما هي...
         function loadQuestion(difficulty) {
             document.getElementById('difficulty-menu').style.display = 'none';
             document.getElementById('loader').style.display = 'block';

@@ -379,75 +379,69 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
 # --- دوال التوليد (يجب أن تكون هنا بالأعلى) ---
 # === دوال الصوت الجديدة ===
 # ==========================================
-#  دالة جلب الصوت من iTunes (البديل السريع)
+#  دالة جلب الصوت من Deezer (البديل الموثوق)
 # ==========================================
-def get_itunes_audio(anime_title):
+def get_deezer_audio(anime_title):
     try:
+        # 1. تنظيف الاسم
         clean_title = anime_title.split(':')[0].split('(')[0].strip()
         
-        url = "https://itunes.apple.com/search"
+        # 2. البحث في Deezer
+        # نضيف كلمة OST للبحث لنحاول اصطياد الألبوم الرسمي فوراً
+        url = "https://api.deezer.com/search"
         params = {
-            "term": clean_title, 
-            "country": "JP",       # المتجر الياباني
-            "media": "music",
-            "entity": "song",
-            "limit": 200           # نجلب عدد كبير لنبحث عن "الإبرة في الكومة"
+            "q": f'{clean_title} OST', # نبحث عن الساوند تراك مباشرة
+            "limit": 25
         }
         
         resp = requests.get(url, params=params, timeout=3)
         if resp.status_code != 200: return None
         
-        results = resp.json().get('results', [])
-        if not results: return None
+        data = resp.json().get('data', [])
         
-        # كلمات محظورة (للتأكد فقط)
-        banned_terms = ['cover', 'remix', 'lofi', 'beats', 'trap', 'piano', 'guitar', 'version', 'english', '英語版']
-        banned_artists = ['animenz', 'pellek', 'raon', 'rifti', 'kobasolo']
+        # إذا لم نجد نتائج مع كلمة OST، نبحث بالاسم فقط (محاولة ثانية)
+        if not data:
+            params['q'] = clean_title
+            resp = requests.get(url, params=params, timeout=3)
+            data = resp.json().get('data', [])
 
+        if not data: return None
+        
+        # === 🛑 فلترة النتائج 🛑 ===
+        banned_words = ['cover', 'remix', 'piano', 'metal', 'lofi', 'live', 'concert', 'version']
         valid_tracks = []
-        for track in results:
-            t_name = track.get('trackName', '').lower()
-            a_name = track.get('artistName', '').lower()
-            c_name = track.get('collectionName', '').lower() # اسم الألبوم
-            genre = track.get('primaryGenreName', '').lower() # التصنيف الرسمي
-            
-            # 1. فلترة المحظورات أولاً
-            if any(bad in t_name for bad in banned_terms) or \
-               any(bad in c_name for bad in banned_terms) or \
-               any(bad in a_name for bad in banned_artists):
-                continue
-
-            # 2. === 🛡️ الفلترة الإيجابية (الصارمة) 🛡️ ===
-            # الشرط: يجب أن يكون التصنيف "أنمي" صراحةً
-            is_anime_genre = 'anime' in genre or 'animation' in genre
-            
-            # أو: يكون التصنيف ساوند تراك، لكن الألبوم يحتوي كلمة أنمي
-            is_soundtrack_anime = ('soundtrack' in genre) and ('anime' in c_name or 'animation' in c_name or 'original' in c_name)
-            
-            # أو: يكون J-Pop لكن الألبوم يصرخ بأنه أنمي (TV Size, Animation, etc)
-            is_jpop_anime = ('j-pop' in genre) and ('anime' in c_name or 'tv' in t_name)
-
-            # إذا لم يتحقق أي شرط من شروط الأنمي، ارمِ الأغنية
-            if not (is_anime_genre or is_soundtrack_anime or is_jpop_anime):
-                continue
-
-            valid_tracks.append(track)
         
-        if not valid_tracks: return None # إذا لم نجد أغنية "أنمي" حقيقية، نتجاوز السؤال
+        for track in data:
+            title = track.get('title', '').lower()
+            artist = track.get('artist', {}).get('name', '').lower()
+            album = track.get('album', {}).get('title', '').lower()
             
-        # نختار عشوائياً من القائمة الموثقة
+            # 1. طرد الكلمات المحظورة (بما فيها Live التي ظهرت لك)
+            if any(bad in title for bad in banned_words) or \
+               any(bad in album for bad in banned_words) or \
+               any(bad in artist for bad in banned_words):
+                continue
+            
+            # 2. التأكد من وجود رابط معاينة (MP3)
+            if not track.get('preview'): continue
+            
+            valid_tracks.append(track)
+            
+        if not valid_tracks: return None
+
+        # نختار عشوائياً من النتائج النظيفة
         track = random.choice(valid_tracks)
         
         return {
-            "link": track.get('previewUrl'),
-            "info": "OST",
+            "link": track.get('preview'),
+            "info": "OST", # Deezer غالباً يعطي OST
             "real_title": anime_title, 
-            "song_name": track.get('trackName'),
-            "artist": track.get('artistName')
+            "song_name": track.get('title'),
+            "artist": track.get('artist', {}).get('name')
         }
-        
+
     except Exception as e:
-        print(f"iTunes Error: {e}")
+        print(f"Deezer Error: {e}")
         return None
 # ==========================================
 #  دالة توليد السؤال (تحديث لاستخدام iTunes)
@@ -459,8 +453,7 @@ def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
             target = random.choice(anime_list)
             local_title = target.get('title_english') or target['title']
             
-            # نستخدم دالة iTunes الجديدة
-            aud = get_itunes_audio(local_title)
+           aud = get_deezer_audio(local_title)
             
             if aud and aud['link']: # تأكدنا أن الرابط موجود
                 

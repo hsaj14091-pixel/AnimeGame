@@ -75,6 +75,30 @@
         }
         .filter-option:hover { background: #3d3d55; }
         .filter-option input { margin-left: 5px; transform: scale(1.2); }
+/* تنسيق صورة السؤال */
+.question-image-container {
+    margin: 10px auto 20px;
+    max-width: 250px;
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    background: #222;
+}
+.question-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    transition: filter 0.5s;
+}
+
+/* تأثير الظل (Silhouette) */
+.silhouette-mode {
+    filter: brightness(0) invert(0.1); /* يجعل الصورة سوداء تماماً */
+}
+/* عند الإجابة أو انتهاء الوقت نكشف الصورة */
+.reveal-image {
+    filter: none !important;
+}
     </style>
 </head>
 <body>
@@ -181,35 +205,54 @@
                 });
         }
 
-        function setupQuestion(data) {
+       function setupQuestion(data) {
             currentData = data;
             isAnswered = false;
             
             const qArea = document.getElementById('question-area');
             qArea.classList.add('active');
             
-            document.getElementById('q-text').innerHTML = data.question;
+            // تفريغ المحتوى السابق
             const contentDiv = document.getElementById('dynamic-content');
             contentDiv.innerHTML = ''; 
+            
+            // === إضافة جديدة: معالجة الصور ===
+            let imageHTML = '';
+            if (data.mode === 'image') {
+                // تحديد ما إذا كانت ظل أم عادية
+                let imgClass = 'question-image';
+                if (data.sub_mode === 'silhouette') imgClass += ' silhouette-mode';
+                
+                imageHTML = `
+                    <div class="question-image-container">
+                        <img src="${data.image}" class="${imgClass}" id="q-img" alt="Character">
+                    </div>
+                `;
+            }
+            // ================================
+
+            document.getElementById('q-text').innerHTML = data.question;
+            
+            // إضافة الصورة قبل الخيارات (إن وجدت)
+            contentDiv.innerHTML += imageHTML;
 
             if (data.mode === 'sorting') {
+                // ... (نفس كود الترتيب السابق) ...
                 let ul = document.createElement('ul');
                 ul.id = 'sortable-list';
                 ul.style.listStyle = 'none'; ul.style.padding = 0;
-                
                 data.drag_items.forEach(item => {
                     ul.innerHTML += `
                         <li class="draggable-item" data-id="${item.id}">
                             <span>${item.text}</span> <span>☰</span>
                         </li>`;
                 });
-                
                 contentDiv.appendChild(ul);
                 contentDiv.innerHTML += `<button class="check-btn" onclick="checkOrder()">تحقق ✅</button>`;
-                
                 new Sortable(document.getElementById('sortable-list'), { animation: 150 });
 
             } else {
+                // وضع الخيارات (سواء كانت نصية أو صورة)
                 let grid = document.createElement('div');
                 grid.className = 'options-grid';
                 
@@ -300,7 +343,9 @@
         function submitResult(isCorrect) {
             isAnswered = true;
             clearInterval(timerInterval);
-            
+            // === جديد: كشف الصورة المخفية ===
+	      const img = document.getElementById('q-img');
+            if(img) img.classList.add('reveal-image');
             fetch('/submit_answer', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},

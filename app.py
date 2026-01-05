@@ -383,30 +383,46 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
 # ==========================================
 def get_itunes_audio(anime_title):
     try:
-        # تنظيف الاسم لضمان نتائج أفضل (نحذف ما بعد النقطتين مثل : Season 2)
+        # 1. تنظيف الاسم
         clean_title = anime_title.split(':')[0].split('(')[0].strip()
-        search_term = f"{clean_title} anime opening"
         
-        # البحث في iTunes
+        # 2. إعداد البحث (لاحظ التغيير الكبير هنا)
         url = "https://itunes.apple.com/search"
         params = {
-            "term": search_term,
+            "term": clean_title,   # نبحث باسم الانمي فقط
+            "country": "JP",       # 🇯🇵 إجبار البحث في المتجر الياباني
             "media": "music",
-            "limit": 5  # نجلب 5 نتائج
+            "entity": "song",
+            "limit": 10
         }
         
-        resp = requests.get(url, params=params, timeout=2)
+        resp = requests.get(url, params=params, timeout=3)
         if resp.status_code != 200: return None
         
         results = resp.json().get('results', [])
         if not results: return None
         
-        # نختار أول نتيجة عشوائية من الـ 5 لتقليل التكرار
-        track = random.choice(results)
+        # 3. نظام الفلترة الذكي (لنقبل الأنمي فقط)
+        valid_tracks = []
+        for track in results:
+            # نتأكد أن التصنيف هو أنمي أو موسيقى يابانية
+            genre = track.get('primaryGenreName', '').lower()
+            kind = track.get('kind', '')
+            
+            # كلمات مفتاحية مقبولة
+            accepted_genres = ['anime', 'soundtrack', 'j-pop', 'j-rock', 'rock', 'animation']
+            
+            if kind == 'song' and any(g in genre for g in accepted_genres):
+                valid_tracks.append(track)
+        
+        # إذا لم نجد شيئاً بعد الفلترة، نأخذ أي نتيجة من اليابان وخلاص
+        final_pool = valid_tracks if valid_tracks else results
+        
+        track = random.choice(final_pool)
         
         return {
-            "link": track.get('previewUrl'), # رابط ملف الصوت المباشر (m4a)
-            "info": "OST / OP / ED",
+            "link": track.get('previewUrl'),
+            "info": "OST",
             "real_title": anime_title, 
             "song_name": track.get('trackName'),
             "artist": track.get('artistName')
@@ -415,7 +431,6 @@ def get_itunes_audio(anime_title):
     except Exception as e:
         print(f"iTunes Error: {e}")
         return None
-
 # ==========================================
 #  دالة توليد السؤال (تحديث لاستخدام iTunes)
 # ==========================================

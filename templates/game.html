@@ -178,22 +178,31 @@
             <h2 class="question-text" id="q-text"></h2>
             <div id="dynamic-content"></div>
         </div>
-    <script>
+   <script>
+        // ==========================================
+        //  1. تعريف المتغيرات العامة (مهم جداً)
+        // ==========================================
         let currentData = null;
         let timerInterval;
         let timeLeft = 0;
         let isAnswered = false;
-        let currentAudio = null;
+        let currentAudio = null; // المتغير المسؤول عن الصوت
+
+        // تحميل المؤثرات الصوتية المحلية
         const soundCorrect = new Audio("{{ url_for('static', filename='sounds/correct.mp3') }}");
         const soundWrong = new Audio("{{ url_for('static', filename='sounds/wrong.mp3') }}");
         const soundTimeout = new Audio("{{ url_for('static', filename='sounds/timeout.mp3') }}");
         
+        // ضبط الصوت
         soundCorrect.volume = 0.8;
         soundWrong.volume = 0.6;
         soundTimeout.volume = 0.7;
-	// هذه هي الدالة الجديدة التي سألت عنها
+
+        // ==========================================
+        //  2. دوال اللعبة
+        // ==========================================
+
         function prepareGame(difficulty) {
-            // 1. تجميع الفلاتر
             const checkboxes = document.querySelectorAll('.filters-container input:checked');
             let selectedFilters = Array.from(checkboxes).map(cb => cb.value);
 
@@ -202,11 +211,9 @@
                 return;
             }
 
-            // 2. إخفاء القائمة وإظهار التحميل
             document.getElementById('difficulty-menu').style.display = 'none';
             document.getElementById('loader').style.display = 'block';
 
-            // 3. إرسال الفلاتر للسيرفر ثم بدء اللعبة
             fetch('/set_filters', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -214,11 +221,10 @@
             })
             .then(res => res.json())
             .then(data => {
-                loadQuestion(difficulty); // الآن نستدعي الدالة الأصلية
+                loadQuestion(difficulty);
             });
         }
 
-        // هنا تأتي دالة loadQuestion القديمة كما هي...
         function loadQuestion(difficulty) {
             document.getElementById('difficulty-menu').style.display = 'none';
             document.getElementById('loader').style.display = 'block';
@@ -235,8 +241,13 @@
                         setupQuestion(response.data);
                     } else {
                          document.getElementById('difficulty-menu').style.display = 'flex';
-                         alert("لم نجد سؤالاً بهذه المواصفات الدقيقة، حاول مجدداً!");
+                         alert("لم نجد سؤالاً مناسباً، حاول مجدداً!");
                     }
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById('loader').style.display = 'none';
+                    document.getElementById('difficulty-menu').style.display = 'flex';
                 });
         }
 
@@ -247,72 +258,64 @@
             const qArea = document.getElementById('question-area');
             qArea.classList.add('active');
             
-            // تفريغ المحتوى السابق
             const contentDiv = document.getElementById('dynamic-content');
             contentDiv.innerHTML = ''; 
-           // === 🎵 كود الصوت المصحح 🎵 ===
-if (data.mode === 'audio') {
-    // 1. إيقاف أي صوت سابق فوراً وتدميره
-    if (currentAudio) {
-        currentAudio.pause();
-        currentAudio.currentTime = 0;
-        currentAudio = null;
-    }
 
-    // 2. إنشاء صوت جديد وتخزينه في المتغير العام
-    currentAudio = new Audio(data.audio_url);
-    currentAudio.volume = 0.5;
+            // === 🎵 معالجة الصوت (مع زر يدوي) 🎵 ===
+            if (data.mode === 'audio') {
+                // 1. تنظيف القديم
+                stopCurrentAudio();
 
-    currentAudio.addEventListener('loadedmetadata', function() {
-        if(currentAudio.duration > 30) currentAudio.currentTime = Math.random() * (currentAudio.duration - 25);
-        currentAudio.play().catch(e => console.log("Auto-play blocked"));
-    });
-    currentAudio.play().catch(e => console.log("Waiting interaction"));
+                // 2. إنشاء الصوت الجديد
+                currentAudio = new Audio(data.audio_url);
+                currentAudio.volume = 1.0; // صوت كامل
 
-    contentDiv.innerHTML += `<div class="audio-visualizer">🎵</div><p style="color:#aaa">استمع للمقطع...</p>`;
-}
-// ================================
-            // ================================
-            // === إضافة جديدة: معالجة الصور ===
-            let imageHTML = '';
-            if (data.mode === 'image') {
-                // تحديد ما إذا كانت ظل أم عادية
-                let imgClass = 'question-image';
-                if (data.sub_mode === 'silhouette') imgClass += ' silhouette-mode';
+                // 3. محاولة التشغيل التلقائي
+                let playPromise = currentAudio.play();
                 
-                imageHTML = `
-                    <div class="question-image-container">
-                        <img src="${data.image}" class="${imgClass}" id="q-img" alt="Character">
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.log("Autoplay blocked, user must click play.");
+                    });
+                }
+
+                // 4. إضافة زر تشغيل يدوي (لحل مشكلة عدم سماع الصوت)
+                contentDiv.innerHTML += `
+                    <div style="margin: 20px 0;">
+                        <div class="audio-visualizer" onclick="playCurrentAudio()">🔊</div>
+                        <button onclick="playCurrentAudio()" class="normal-btn" style="background:#f39c12; margin-top:10px;">
+                            ▶️ اضغط هنا لتشغيل/إعادة الصوت
+                        </button>
                     </div>
                 `;
             }
-            // ================================
+            // ==========================================
+
+            // إضافة الصور
+            let imageHTML = '';
+            if (data.mode === 'image') {
+                let imgClass = 'question-image';
+                if (data.sub_mode === 'silhouette') imgClass += ' silhouette-mode';
+                imageHTML = `<div class="question-image-container"><img src="${data.image}" class="${imgClass}" id="q-img" alt="Character"></div>`;
+            }
 
             document.getElementById('q-text').innerHTML = data.question;
-            
-            // إضافة الصورة قبل الخيارات (إن وجدت)
             contentDiv.innerHTML += imageHTML;
 
+            // الخيارات
             if (data.mode === 'sorting') {
-                // ... (نفس كود الترتيب السابق) ...
                 let ul = document.createElement('ul');
                 ul.id = 'sortable-list';
                 ul.style.listStyle = 'none'; ul.style.padding = 0;
                 data.drag_items.forEach(item => {
-                    ul.innerHTML += `
-                        <li class="draggable-item" data-id="${item.id}">
-                            <span>${item.text}</span> <span>☰</span>
-                        </li>`;
+                    ul.innerHTML += `<li class="draggable-item" data-id="${item.id}"><span>${item.text}</span> <span>☰</span></li>`;
                 });
                 contentDiv.appendChild(ul);
                 contentDiv.innerHTML += `<button class="check-btn" onclick="checkOrder()">تحقق ✅</button>`;
                 new Sortable(document.getElementById('sortable-list'), { animation: 150 });
-
             } else {
-                // وضع الخيارات (سواء كانت نصية أو صورة)
                 let grid = document.createElement('div');
                 grid.className = 'options-grid';
-                
                 data.options.forEach(opt => {
                     let btn = document.createElement('button');
                     btn.className = 'normal-btn';
@@ -323,7 +326,24 @@ if (data.mode === 'audio') {
                 contentDiv.appendChild(grid);
             }
 
-            startTimer(25);
+            startTimer(30); // زيادة الوقت قليلاً للأسئلة الصوتية
+        }
+
+        // دالة مساعدة لتشغيل الصوت يدوياً
+        function playCurrentAudio() {
+            if (currentAudio) {
+                currentAudio.currentTime = 0;
+                currentAudio.play();
+            }
+        }
+
+        // دالة مساعدة لإيقاف الصوت بأمان
+        function stopCurrentAudio() {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.src = "";
+                currentAudio = null;
+            }
         }
 
         function startTimer(seconds) {
@@ -352,35 +372,26 @@ if (data.mode === 'audio') {
 
         function handleTimeUp() {
             soundTimeout.play();
-            if(currentData.mode === 'text') highlightCorrectBtn(currentData.answer);
+            if(currentData.mode === 'text' || currentData.mode === 'audio' || currentData.mode === 'image') {
+                highlightCorrectBtn(currentData.answer);
+            }
             document.getElementById('timeout-modal').classList.add('show');
             setTimeout(() => submitResult(false), 2500);
         }
 
         function checkNormal(selected, btn) {
             if(isAnswered) return;
-
-   			 // === 🛑 الإيقاف الصحيح للصوت ===
-   			 if (currentAudio) {
-       			 currentAudio.pause();
-        		currentAudio.currentTime = 0;
-            }
-            // ====================================================
+            stopCurrentAudio(); // إيقاف الصوت فور الاختيار
 
             const correct = currentData.answer;
-            
             if(selected === correct) {
                 btn.classList.add('btn-correct');
                 triggerSuccess();
             } else {
                 btn.classList.add('btn-wrong');
                 highlightCorrectBtn(correct);
-                
                 soundWrong.currentTime = 0; soundWrong.play();
-
-                setTimeout(() => {
-                    triggerFailure();
-                }, 1500); 
+                setTimeout(() => triggerFailure(), 1500); 
             }
         }
 
@@ -399,22 +410,16 @@ if (data.mode === 'audio') {
 
         function highlightCorrectBtn(correctTxt) {
             document.querySelectorAll('.normal-btn').forEach(btn => {
-                if(btn.innerText === correctTxt) btn.classList.add('btn-correct');
+                // مقارنة النص (قد تحتاج لتنظيف المسافات إذا لم تتطابق)
+                if(btn.innerText.trim() === correctTxt.trim()) btn.classList.add('btn-correct');
             });
         }
 
         function submitResult(isCorrect) {
-            if (currentAudio) {
-        	currentAudio.pause();
-       	 	currentAudio.currentTime = 0;
-        	currentAudio = null;
-    }
-    // ========================================
-
-    isAnswered = true;
+            stopCurrentAudio(); // تأكيد إيقاف الصوت
+            isAnswered = true;
             clearInterval(timerInterval);
             
-            // كشف الصورة المخفية (إن وجدت)
             const img = document.getElementById('q-img');
             if(img) img.classList.add('reveal-image');
             
@@ -450,9 +455,7 @@ if (data.mode === 'audio') {
         }
 
         function resetInterface() {
-	// إيقاف الصوت
-            const existingAudio = document.getElementById('game-audio');
-            if(existingAudio) { existingAudio.pause(); existingAudio.src = ""; }
+            stopCurrentAudio();
             document.getElementById('question-area').classList.remove('active');
             document.getElementById('timeout-modal').classList.remove('show');
             document.getElementById('difficulty-menu').style.display = 'flex'; 

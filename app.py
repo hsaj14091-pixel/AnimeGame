@@ -394,47 +394,60 @@ def generate_true_false(anime_list):
         else: fake = year + random.choice([-2, -1, 1, 2]); q = f"أنمي **{title}** صدر عام {fake}."; ans = "خطأ"
         return {"mode": "text", "id": f"easy_tf_{random.randint(1000,9999)}", "question": f"صح أم خطأ؟<br>{q}", "answer": ans, "options": ["صح", "خطأ"]}
     return None
-
 def generate_any_question(anime_list, diff):
+    # ==========================================
+    #  خريطة الفلاتر (تم نقلها هنا لترتيب الكود)
+    # ==========================================
+    GENERATORS_MAP = {
+        'character': [
+            generate_smart_character, 
+            generate_common_link, 
+            lambda lst: generate_image_character(lst, 'normal'), 
+            lambda lst: generate_image_character(lst, 'silhouette')
+        ],
+        'studio': [generate_imposter_question, generate_reverse_studio, generate_classic_studio],
+        'year': [generate_sort_year, generate_classic_year],
+        'score': [generate_sort_score],
+        'general': [generate_true_false],
+        'image': [
+            lambda lst: generate_image_character(lst, 'normal'),
+            lambda lst: generate_image_character(lst, 'silhouette')
+        ]
+    }
+
+    # دالة مساعدة داخلية لدمج الفلاتر المختارة
+    def get_allowed_generators(selected_filters):
+        if not selected_filters:
+            all_gens = []
+            for gens in GENERATORS_MAP.values():
+                all_gens.extend(gens)
+            return list(set(all_gens))
+        
+        allowed = []
+        for key in selected_filters:
+            if key in GENERATORS_MAP:
+                allowed.extend(GENERATORS_MAP[key])
+        # إذا لم نجد دوال مناسبة، نرجع الكل كاحتياط
+        return allowed if allowed else get_allowed_generators(None)
+
+    # --- بداية منطق اختيار السؤال ---
+    
     # جلب الفلاتر المختارة من الجلسة
     selected_filters = session.get('filters', [])
     
-    # قم بتعديل القائمة الموجودة لديك لتصبح هكذا:
-GENERATORS_MAP = {
-    'character': [generate_smart_character, generate_common_link, lambda lst: generate_image_character(lst, 'normal'), lambda lst: generate_image_character(lst, 'silhouette')],
-    'studio': [generate_imposter_question, generate_reverse_studio, generate_classic_studio],
-    'year': [generate_sort_year, generate_classic_year],
-    'score': [generate_sort_score],
-    'general': [generate_true_false],
-    'image': [ # نوع جديد للفلاتر
-        lambda lst: generate_image_character(lst, 'normal'),
-        lambda lst: generate_image_character(lst, 'silhouette')
-    ]
-}
+    # تحديد المولدات المسموح بها
+    available_generators = get_allowed_generators(selected_filters)
     
-    # تجميع الدوال المسموح بها
-    allowed_funcs = []
-    if not selected_filters:
-        # إذا لم يحدد شيئاً نختار كل الدوال
-        for funcs in generators_map.values():
-            allowed_funcs.extend(funcs)
-    else:
-        for f_type in selected_filters:
-            if f_type in generators_map:
-                allowed_funcs.extend(generators_map[f_type])
-    
-    # إذا كانت القائمة فارغة لأي سبب، نضع كل الدوال كاحتياط
-    if not allowed_funcs:
-        for funcs in generators_map.values():
-            allowed_funcs.extend(funcs)
-
     # اختيار دالة عشوائية
-    generator_func = random.choice(allowed_funcs)
+    generator_func = random.choice(available_generators)
     
+    # التعامل مع الدوال التي تحتاج معامل الصعوبة diff
     if generator_func == generate_smart_character:
         return generator_func(anime_list, diff)
+    
     return generator_func(anime_list)
 
+# ==========================================
 # ==========================================
 #  5. المسارات (Routes)
 # ==========================================

@@ -851,6 +851,57 @@ def play_ui():
     session['score'] = 0
     session['hearts'] = 3
     return render_template('game.html')
+# ==========================================
+#  🛠️ أداة إصلاح وتعبئة قاعدة البيانات (انسخ هذا الجزء)
+# ==========================================
+@app.route('/admin/fix_db')
+def fix_db():
+    try:
+        conn = get_db()
+        # 1. التأكد من وجود جدول الأنمي
+        conn.execute('''CREATE TABLE IF NOT EXISTS anime 
+                        (mal_id INTEGER PRIMARY KEY, 
+                         title TEXT, 
+                         popularity INTEGER, 
+                         year INTEGER, 
+                         score REAL, 
+                         studios TEXT,
+                         raw_json TEXT)''')
+        
+        # 2. جلب قائمة أنميات جديدة ومحدثة من النت
+        added_count = 0
+        # سنجلب أول 3 صفحات (حوالي 75 أنمي) لضمان وجود تنوع للأسئلة
+        for page in range(1, 4): 
+            data = get_data_from_api("top/anime", {"page": page, "filter": "bypopularity"})
+            if data:
+                for anime in data:
+                    mal_id = anime['mal_id']
+                    # تجاهل الأنميات التي ليس لها صورة أو بيانات ناقصة
+                    if not anime.get('images', {}).get('jpg', {}).get('image_url'): continue
+
+                    title = anime.get('title_english') or anime['title']
+                    pop = anime.get('popularity')
+                    year = anime.get('year')
+                    score = anime.get('score')
+                    studios_list = anime.get('studios', [])
+                    
+                    raw = json.dumps(anime)
+                    studios_str = json.dumps(studios_list)
+
+                    try:
+                        conn.execute('''INSERT OR REPLACE INTO anime 
+                                      (mal_id, title, popularity, year, score, studios, raw_json) 
+                                      VALUES (?, ?, ?, ?, ?, ?, ?)''', 
+                                      (mal_id, title, pop, year, score, studios_str, raw))
+                        added_count += 1
+                    except: pass
+            time.sleep(1) # استراحة قصيرة عشان الموقع ما يحظرنا
+
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "message": f"✅ تم إصلاح القاعدة وإضافة {added_count} أنمي جديد! الآن اللعبة جاهزة."})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
 if __name__ == '__main__':
     # تأكد من أن debug=True لترت الأخطاء، والمنفذ 5000
     socketio.run(app, debug=True, port=5000)

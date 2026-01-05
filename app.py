@@ -380,31 +380,37 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
 # === دوال الصوت الجديدة ===
 def get_animethemes_audio(mal_id, allowed_types):
     try:
-        # === 🟢 التغيير الجذري: البحث عن المورد (Resource) مباشرة ===
-        # هذا يضمن 100% أننا نحصل على الأنمي المطابق لـ MAL ID
-        url = f"https://api.animethemes.moe/resource?filter[site]=myanimelist&filter[external_id]={mal_id}&include=anime.animethemes.song.artists,anime.animethemes.animethemeentries.videos"
+        # === الخطوة 1: الحصول على معرف الانمي (Slug) بدقة ===
+        # هذا الرابط بسيط جداً ولا يسبب خطأ 422
+        resource_url = f"https://api.animethemes.moe/resource?filter[site]=myanimelist&filter[external_id]={mal_id}&include=anime"
         
-        resp = requests.get(url, timeout=3)
+        resp = requests.get(resource_url, timeout=3)
         if resp.status_code != 200: 
-            print(f"DEBUG: API returned {resp.status_code}")
+            # print(f"DEBUG: Step 1 Failed {resp.status_code}") 
             return None
         
-        data = resp.json().get('resources', [])
-        if not data: 
-            print(f"DEBUG: No resource found for MAL ID {mal_id}")
+        res_data = resp.json().get('resources', [])
+        if not res_data: 
+            # print(f"DEBUG: No entry found for MAL ID {mal_id}")
             return None
-        
-        # نستخرج الانمي من داخل المورد
-        anime_data = data[0].get('anime')
-        if not anime_data: return None
 
-        real_title = anime_data.get('name') 
+        # استخراج "المعرف النصي" الخاص بالموقع (مثال: shingeki-no-kyojin)
+        anime_slug = res_data[0].get('anime', {}).get('slug')
+        real_title = res_data[0].get('anime', {}).get('name')
         
-        # الآن نختار الثيمات من داخل الانمي
+        if not anime_slug: return None
+
+        # === الخطوة 2: جلب الأغاني باستخدام المعرف الصحيح ===
+        anime_url = f"https://api.animethemes.moe/anime/{anime_slug}?include=animethemes.song.artists,animethemes.animethemeentries.videos"
+        resp_anime = requests.get(anime_url, timeout=3)
+        
+        if resp_anime.status_code != 200: return None
+        
+        anime_data = resp_anime.json().get('anime')
+        
+        # تصفية الثيمات (OP/ED)
         themes = [t for t in anime_data.get('animethemes', []) if t['type'] in allowed_types]
-        if not themes: 
-            print(f"DEBUG: Anime found ({real_title}) but no {allowed_types} themes.")
-            return None
+        if not themes: return None
         
         sel = random.choice(themes)
         entries = sel.get('animethemeentries', [])
@@ -412,6 +418,7 @@ def get_animethemes_audio(mal_id, allowed_types):
         
         vid = entries[0].get('videos', [])[0].get('link')
         
+        # استخراج المعلومات
         song_info = sel.get('song', {})
         song_title = song_info.get('title', 'Unknown Title')
         artists = song_info.get('artists', [])
@@ -424,8 +431,9 @@ def get_animethemes_audio(mal_id, allowed_types):
             "song_name": song_title,
             "artist": artist_name
         }
+
     except Exception as e: 
-        print(f"Error extracting audio: {e}")
+        print(f"Audio Error: {e}")
         return None
         # ==============================
 

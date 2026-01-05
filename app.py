@@ -408,7 +408,7 @@ def get_deezer_audio(anime_title):
         if not data: return None
         
         # === 🛑 فلترة النتائج 🛑 ===
-        banned_words = ['cover', 'remix', 'piano', 'metal', 'lofi', 'live', 'concert', 'version']
+        banned_words = ['cover', 'remix', 'piano', 'metal', 'lofi', 'live', 'concert', 'version', 'english']
         valid_tracks = []
         
         for track in data:
@@ -416,7 +416,7 @@ def get_deezer_audio(anime_title):
             artist = track.get('artist', {}).get('name', '').lower()
             album = track.get('album', {}).get('title', '').lower()
             
-            # 1. طرد الكلمات المحظورة (بما فيها Live التي ظهرت لك)
+            # 1. طرد الكلمات المحظورة
             if any(bad in title for bad in banned_words) or \
                any(bad in album for bad in banned_words) or \
                any(bad in artist for bad in banned_words):
@@ -434,7 +434,7 @@ def get_deezer_audio(anime_title):
         
         return {
             "link": track.get('preview'),
-            "info": "OST", # Deezer غالباً يعطي OST
+            "info": "OST", 
             "real_title": anime_title, 
             "song_name": track.get('title'),
             "artist": track.get('artist', {}).get('name')
@@ -443,19 +443,20 @@ def get_deezer_audio(anime_title):
     except Exception as e:
         print(f"Deezer Error: {e}")
         return None
+
 # ==========================================
-#  دالة توليد السؤال (تحديث لاستخدام iTunes)
+#  دالة توليد السؤال (تحديث لاستخدام Deezer)
 # ==========================================
 def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
-    # iTunes لا يفرق بين OP و ED بدقة، هو يبحث عن الأغاني المشهورة للأنمي
     for _ in range(5): 
         try:
             target = random.choice(anime_list)
             local_title = target.get('title_english') or target['title']
             
-           aud = get_deezer_audio(local_title)
+            # 👇👇 استخدام دالة Deezer الجديدة 👇👇
+            aud = get_deezer_audio(local_title)
             
-            if aud and aud['link']: # تأكدنا أن الرابط موجود
+            if aud and aud['link']: 
                 
                 others = [a for a in anime_list if a['mal_id'] != target['mal_id']]
                 if len(others) < 3: continue

@@ -384,69 +384,93 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
         return {"mode": "text", "id": f"char_{random.randint(1000,9999)}", "question": f"الشخصية **{char_name}** ({selected_char['role']}) تظهر في أي أنمي؟", "answer": title, "points": points, "options": random.sample(others, 3) + [title]}
     except: return None
 
+# --- دوال التوليد (يجب أن تكون هنا بالأعلى) ---
+
 def generate_true_false(anime_list):
-    target = random.choice(anime_list)
-    title = target.get('title_english') or target['title']
-    is_truth = random.choice([True, False])
-    if target.get('year'):
-        year = target['year']
-        if is_truth: q = f"أنمي **{title}** صدر عام {year}."; ans = "صح"
-        else: fake = year + random.choice([-2, -1, 1, 2]); q = f"أنمي **{title}** صدر عام {fake}."; ans = "خطأ"
-        return {"mode": "text", "id": f"easy_tf_{random.randint(1000,9999)}", "question": f"صح أم خطأ؟<br>{q}", "answer": ans, "options": ["صح", "خطأ"]}
-    return None
+    try:
+        target = random.choice(anime_list)
+        title = target.get('title_english') or target['title']
+        is_truth = random.choice([True, False])
+        if target.get('year'):
+            year = target['year']
+            if is_truth: q = f"أنمي **{title}** صدر عام {year}."; ans = "صح"
+            else: fake = year + random.choice([-2, -1, 1, 2]); q = f"أنمي **{title}** صدر عام {fake}."; ans = "خطأ"
+            return {"mode": "text", "id": f"easy_tf_{random.randint(1000,9999)}", "question": f"صح أم خطأ؟<br>{q}", "answer": ans, "options": ["صح", "خطأ"]}
+        return None
+    except: return None
+
+# ==========================================
+#  نظام الفلاتر (يجب أن يكون أسفل الدوال)
+# ==========================================
+
+# 1. تعريف الخريطة (الآن الدوال معرفة ولن يحدث خطأ)
+GENERATORS_MAP = {
+    'character': [
+        generate_smart_character, 
+        generate_common_link, 
+        lambda lst: generate_image_character(lst, 'normal'), 
+        lambda lst: generate_image_character(lst, 'silhouette')
+    ],
+    'studio': [generate_imposter_question, generate_reverse_studio, generate_classic_studio],
+    'year': [generate_sort_year, generate_classic_year],
+    'score': [generate_sort_score],
+    'general': [generate_true_false],
+    'image': [
+        lambda lst: generate_image_character(lst, 'normal'),
+        lambda lst: generate_image_character(lst, 'silhouette')
+    ]
+}
+
+# 2. دالة مساعدة لدمج الفلاتر
+def get_allowed_generators(selected_filters):
+    # إذا القائمة فارغة أو None، نرجع كل شيء
+    if not selected_filters:
+        all_gens = []
+        for gens in GENERATORS_MAP.values():
+            all_gens.extend(gens)
+        return list(set(all_gens))
+    
+    allowed = []
+    for key in selected_filters:
+        if key in GENERATORS_MAP:
+            allowed.extend(GENERATORS_MAP[key])
+            
+    # إذا بحثنا ولم نجد دوال (احتياط)، نرجع الكل
+    return allowed if allowed else get_allowed_generators(None)
+
+# 3. الدالة الرئيسية لتوليد السؤال
 def generate_any_question(anime_list, diff):
-    # ==========================================
-    #  خريطة الفلاتر (تم نقلها هنا لترتيب الكود)
-    # ==========================================
-    GENERATORS_MAP = {
-        'character': [
-            generate_smart_character, 
-            generate_common_link, 
-            lambda lst: generate_image_character(lst, 'normal'), 
-            lambda lst: generate_image_character(lst, 'silhouette')
-        ],
-        'studio': [generate_imposter_question, generate_reverse_studio, generate_classic_studio],
-        'year': [generate_sort_year, generate_classic_year],
-        'score': [generate_sort_score],
-        'general': [generate_true_false],
-        'image': [
-            lambda lst: generate_image_character(lst, 'normal'),
-            lambda lst: generate_image_character(lst, 'silhouette')
-        ]
-    }
-
-    # دالة مساعدة داخلية لدمج الفلاتر المختارة
-    def get_allowed_generators(selected_filters):
-        if not selected_filters:
-            all_gens = []
-            for gens in GENERATORS_MAP.values():
-                all_gens.extend(gens)
-            return list(set(all_gens))
+    try:
+        # جلب الفلاتر من الجلسة (التي أرسلها game.html)
+        selected_filters = session.get('filters', [])
         
-        allowed = []
-        for key in selected_filters:
-            if key in GENERATORS_MAP:
-                allowed.extend(GENERATORS_MAP[key])
-        # إذا لم نجد دوال مناسبة، نرجع الكل كاحتياط
-        return allowed if allowed else get_allowed_generators(None)
+        # اختيار الدوال المسموحة
+        available_generators = get_allowed_generators(selected_filters)
+        
+        if not available_generators: return None
 
-    # --- بداية منطق اختيار السؤال ---
-    
-    # جلب الفلاتر المختارة من الجلسة
-    selected_filters = session.get('filters', [])
-    
-    # تحديد المولدات المسموح بها
-    available_generators = get_allowed_generators(selected_filters)
-    
-    # اختيار دالة عشوائية
-    generator_func = random.choice(available_generators)
-    
-    # التعامل مع الدوال التي تحتاج معامل الصعوبة diff
-    if generator_func == generate_smart_character:
-        return generator_func(anime_list, diff)
-    
-    return generator_func(anime_list)
+        # اختيار دالة واحدة عشوائية
+        generator_func = random.choice(available_generators)
+        
+        # تنفيذ الدالة (مع مراعاة أن دالة الشخصيات تحتاج diff)
+        if generator_func == generate_smart_character:
+            return generator_func(anime_list, diff)
+        
+        return generator_func(anime_list)
+    except Exception as e:
+        print(f"Generator Error: {e}")
+        return None
 
+# مسار حفظ الفلاتر (مهم جداً أن يكون هنا لكي يراه game.html)
+@app.route('/set_filters', methods=['POST'])
+def set_filters():
+    try:
+        data = request.json
+        filters = data.get('filters', [])
+        session['filters'] = filters
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 # ==========================================
 #  5. المسارات (Routes)

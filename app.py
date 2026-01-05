@@ -383,17 +383,15 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
 # ==========================================
 def get_itunes_audio(anime_title):
     try:
-        # 1. تنظيف الاسم
         clean_title = anime_title.split(':')[0].split('(')[0].strip()
         
-        # 2. البحث في المتجر الياباني (نتائج أكثر لتصفية أفضل)
         url = "https://itunes.apple.com/search"
         params = {
             "term": clean_title, 
             "country": "JP",
             "media": "music",
             "entity": "song",
-            "limit": 50  # نجلب 50 نتيجة لنفرزها براحتنا
+            "limit": 100  # جلبنا 100 نتيجة لنفرز بصرامة
         }
         
         resp = requests.get(url, params=params, timeout=3)
@@ -402,36 +400,49 @@ def get_itunes_audio(anime_title):
         results = resp.json().get('results', [])
         if not results: return None
         
-        # === 🛑 القائمة السوداء (Blacklist) 🛑 ===
-        # أي أغنية تحتوي عنوانها أو اسم فنانها على هذه الكلمات سنطردها
-        banned_words = [
-            'remix', 'cover', 'lofi', 'beats', 'trap', 'piano', 
-            'guitar', 'version', 'instrumental', 'orchestral', 
-            'music box', '8-bit', 'karaoke', 'arrangement'
+        # === 🛑 القائمة السوداء للفنانين والكلمات 🛑 ===
+        # هؤلاء مشهورين بالتقليد ويجب حظرهم بالاسم
+        banned_artists = [
+            'animenz', 'animenzz', 'pellek', 'raon lee', 'theishter', 
+            'rifti', 'kobasolo', 'studio ghibli piano', 'relaxing piano',
+            'starbomb', 'natewantstobattle', 'jonathan young', 'caleb hyles',
+            'cover', 'tribute', 'project', 'band'
         ]
         
+        banned_terms = [
+            'cover', 'remix', 'lofi', 'beats', 'trap', 'piano', 
+            'guitar', 'version', 'instrumental', 'orchestral', 
+            'music box', '8-bit', 'karaoke', 'arrangement', 'ringtone'
+        ]
+
         valid_tracks = []
         for track in results:
-            track_name = track.get('trackName', '').lower()
-            artist_name = track.get('artistName', '').lower()
-            collection_name = track.get('collectionName', '').lower()
+            t_name = track.get('trackName', '').lower()
+            a_name = track.get('artistName', '').lower()
+            c_name = track.get('collectionName', '').lower() # اسم الألبوم
             
-            # فحص الكلمات المحظورة
-            if any(bad in track_name for bad in banned_words) or \
-               any(bad in artist_name for bad in banned_words) or \
-               any(bad in collection_name for bad in banned_words):
-                continue
+            # 1. فحص اسم الفنان (Artist)
+            if any(bad in a_name for bad in banned_artists): continue
             
-            # 🟢 ميزة إضافية: نفضل الأغاني التي تحتوي على TV Size أو Anime
-            # لكننا سنقبل الكل ما عدا المحظور
+            # 2. فحص اسم الأغنية (Track Name)
+            if any(bad in t_name for bad in banned_terms): continue
+            
+            # 3. فحص اسم الألبوم (Collection Name) - مهم جداً
+            # الألبومات المقلدة غالباً تحتوي على Cover أو Piano Collection
+            if any(bad in c_name for bad in banned_terms): continue
+            
+            # 4. (اختياري) تفضيل النتائج التي تحتوي على كلمات رسمية
+            # إذا أردت دقة 100%، يمكنك تفعيل هذا الشرط، لكنه قد يقلل النتائج جداً
+            # if 'animation' not in c_name and 'soundtrack' not in c_name and 'original' not in c_name:
+            #     continue 
+
             valid_tracks.append(track)
         
-        # إذا بعد التصفية لم يتبق شيء، نعود للبحث الخام (أفضل من لا شيء)
-        # لكن غالباً سنجد شيئاً نظيفاً
-        final_pool = valid_tracks if valid_tracks else results[:5]
-        
-        # نختار عشوائياً من "النظيف"
-        track = random.choice(final_pool)
+        if not valid_tracks: 
+            return None # نفضل عدم إظهار سؤال على إظهار Animenzz
+            
+        # نختار عشوائياً من القائمة النظيفة
+        track = random.choice(valid_tracks)
         
         return {
             "link": track.get('previewUrl'),

@@ -377,7 +377,34 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
     except: return None
 
 # --- دوال التوليد (يجب أن تكون هنا بالأعلى) ---
+# === دوال الصوت الجديدة ===
+def get_animethemes_audio(mal_id, allowed_types):
+    try:
+        url = f"https://api.animethemes.moe/anime?filter[site]=myanimelist&filter[external_id]={mal_id}&include=animethemes.animethemeentries.videos"
+        resp = requests.get(url, timeout=3)
+        if resp.status_code != 200: return None
+        data = resp.json().get('anime', [])
+        if not data: return None
+        themes = [t for t in data[0].get('animethemes', []) if t['type'] in allowed_types]
+        if not themes: return None
+        sel = random.choice(themes)
+        vid = sel.get('animethemeentries', [])[0].get('videos', [])[0].get('link')
+        return {"link": vid, "info": sel['type']}
+    except: return None
 
+def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
+    for _ in range(3):
+        try:
+            target = random.choice(anime_list)
+            aud = get_animethemes_audio(target['mal_id'], allowed_types)
+            if aud:
+                tit = target.get('title_english') or target['title']
+                opts = random.sample([a.get('title_english') or a['title'] for a in anime_list if a != target], 3) + [tit]
+                random.shuffle(opts)
+                return {"mode": "audio", "id": f"aud_{random.randint(1,999)}", "question": f"لمن تعود أغنية الـ **{aud['info']}** هذه؟", "audio_url": aud['link'], "answer": tit, "options": opts, "points": 400}
+        except: continue
+    return None
+# ==========================
 def generate_true_false(anime_list):
     try:
         target = random.choice(anime_list)
@@ -626,11 +653,18 @@ def logout():
 
 # خريطة تربط نوع الفلتر بدوال التوليد المناسبة
 GENERATORS_MAP = {
-    'character': [generate_smart_character, generate_common_link, lambda lst: generate_image_character(lst, 'normal'), lambda lst: generate_image_character(lst, 'silhouette')],
-    'studio': [generate_imposter_question, generate_reverse_studio, generate_classic_studio], # أسئلة الاستوديوهات
-    'year': [generate_sort_year, generate_classic_year], # أسئلة السنوات
-    'score': [generate_sort_score], # أسئلة التقييم
-    'general': [generate_true_false] # صح أو خطأ
+    'character': [
+        generate_smart_character, 
+        generate_common_link, 
+        lambda lst: generate_image_character(lst, 'normal'), 
+        lambda lst: generate_image_character(lst, 'silhouette')
+    ],
+    'studio': [generate_imposter_question, generate_reverse_studio, generate_classic_studio],
+    'year': [generate_sort_year, generate_classic_year],
+    'score': [generate_sort_score],
+    'general': [generate_true_false],
+    'audio_op': [lambda lst: generate_audio_question(lst, ['OP'])],
+    'audio_ed': [lambda lst: generate_audio_question(lst, ['ED'])]
 }
 
 # دالة مساعدة لدمج الفلاتر المختارة

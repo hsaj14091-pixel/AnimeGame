@@ -112,6 +112,17 @@
     30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
     40%, 60% { transform: translate3d(4px, 0, 0); }
 }
+/* === تصميم وضع الصوت === */
+.audio-visualizer {
+    width: 100px; height: 100px; background: var(--accent); margin: 20px auto;
+    border-radius: 50%; animation: pulse-audio 1s infinite; display: flex;
+    justify-content: center; align-items: center; font-size: 3rem; color: var(--bg);
+}
+@keyframes pulse-audio {
+    0% { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0.7); transform: scale(1); }
+    70% { box-shadow: 0 0 0 20px rgba(243, 156, 18, 0); transform: scale(1.1); }
+    100% { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0); transform: scale(1); }
+}
     </style>
 </head>
 <body>
@@ -139,6 +150,9 @@
         <label class="filter-option"><input type="checkbox" value="year" checked> تواريخ</label>
         <label class="filter-option"><input type="checkbox" value="score" checked> تقييمات</label>
         <label class="filter-option"><input type="checkbox" value="general" checked> عام</label>
+	<label class="filter-option"><input type="checkbox" value="audio_op" checked> شارات بداية (OP)</label>
+	<label class="filter-option"><input type="checkbox" value="audio_ed" checked> شارات نهاية (ED)</label>
+
     </div>
     <h3 style="color:white; margin:15px 0 10px">اختر الصعوبة:</h3>
     
@@ -236,7 +250,18 @@
             // تفريغ المحتوى السابق
             const contentDiv = document.getElementById('dynamic-content');
             contentDiv.innerHTML = ''; 
-            
+            // === 🎵 كود الصوت الجديد 🎵 ===
+            if (data.mode === 'audio') {
+                let audio = new Audio(data.audio_url);
+                audio.id = 'game-audio'; audio.volume = 0.5;
+                audio.addEventListener('loadedmetadata', function() {
+                    if(audio.duration > 30) audio.currentTime = Math.random() * (audio.duration - 25);
+                    audio.play().catch(e => console.log("Auto-play blocked"));
+                });
+                audio.play().catch(e => console.log("Waiting interaction"));
+                contentDiv.innerHTML += `<div class="audio-visualizer">🎵</div><p style="color:#aaa">استمع للمقطع...</p>`;
+            }
+            // ================================
             // === إضافة جديدة: معالجة الصور ===
             let imageHTML = '';
             if (data.mode === 'image') {
@@ -399,6 +424,9 @@
         }
 
         function resetInterface() {
+	// إيقاف الصوت
+            const existingAudio = document.getElementById('game-audio');
+            if(existingAudio) { existingAudio.pause(); existingAudio.src = ""; }
             document.getElementById('question-area').classList.remove('active');
             document.getElementById('timeout-modal').classList.remove('show');
             document.getElementById('difficulty-menu').style.display = 'flex'; 

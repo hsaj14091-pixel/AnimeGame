@@ -394,11 +394,23 @@
         }
 
         function submitResult(isCorrect) {
+            // === 🛑 الحل النهائي لإيقاف الصوت 🛑 ===
+            const audio = document.getElementById('game-audio');
+            if (audio) {
+                audio.pause();
+                audio.currentTime = 0;
+                audio.src = ""; // مسح الرابط تماماً لقتل الصوت
+                audio.remove(); // حذف العنصر من الصفحة
+            }
+            // ========================================
+
             isAnswered = true;
             clearInterval(timerInterval);
-            // === جديد: كشف الصورة المخفية ===
-	      const img = document.getElementById('q-img');
+            
+            // كشف الصورة المخفية (إن وجدت)
+            const img = document.getElementById('q-img');
             if(img) img.classList.add('reveal-image');
+            
             fetch('/submit_answer', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},

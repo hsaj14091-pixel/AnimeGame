@@ -393,44 +393,50 @@ def get_animethemes_audio(mal_id, allowed_types):
     except: return None
 
 def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
-    # سنحاول 5 مرات لضمان إيجاد أغنية صحيحة
+    # محاولة 5 مرات للعثور على أنمي له أغنية صالحة
     for _ in range(5):
         try:
+            # 1. نختار الأنمي المستهدف (صاحب الأغنية)
             target = random.choice(anime_list)
             
-            # جلب الأغنية
+            # 2. نجلب الأغنية من API
             aud = get_animethemes_audio(target['mal_id'], allowed_types)
             
             if aud:
-                tit = target.get('title_english') or target['title']
+                # 3. نجهز الاسم الصحيح
+                correct_title = target.get('title_english') or target['title']
                 
-                # اختيار خيارات خاطئة من القائمة
-                others = [a for a in anime_list if a['mal_id'] != target['mal_id']]
+                # 4. نختار 3 خيارات خاطئة (يجب أن لا تكون نفس الأنمي الصحيح)
+                wrong_candidates = [a for a in anime_list if a['mal_id'] != target['mal_id']]
                 
-                # إذا لم يكن هناك خيارات كافية، نعيد المحاولة
-                if len(others) < 3: continue
-
-                # استخراج الأسماء فقط
-                wrong_options = [a.get('title_english') or a['title'] for a in random.sample(others, 3)]
+                # إذا لم يكن هناك خيارات كافية في القائمة، نتخطى هذا الأنمي
+                if len(wrong_candidates) < 3: 
+                    continue
                 
-                options = wrong_options + [tit]
-                random.shuffle(options)
+                # نختار 3 أسماء عشوائية للخطأ
+                wrong_options = random.sample([a.get('title_english') or a['title'] for a in wrong_candidates], 3)
                 
-                # === 🛑 إصلاح 2: إضافة وقت للرابط لمنع الكاش ===
+                # 5. ندمج الخيارات (3 خطأ + 1 صح)
+                final_options = wrong_options + [correct_title]
+                random.shuffle(final_options)
+                
+                # إضافة timestamp للرابط لمنع الكاش
+                import time
                 clean_url = f"{aud['link']}?t={int(time.time())}"
                 
                 return {
                     "mode": "audio",
-                    "id": f"aud_{random.randint(1,9999)}",
+                    "id": f"aud_{random.randint(1000,9999)}",
                     "question": f"لمن تعود أغنية الـ **{aud['info']}** هذه؟",
                     "audio_url": clean_url,
-                    "answer": tit,
-                    "options": options,
+                    "answer": correct_title,
+                    "options": final_options,
                     "points": 400
                 }
         except Exception as e:
-            print(f"Error skipping: {e}")
+            print(f"Audio Gen Error: {e}")
             continue
+            
     return None
 # ==========================
 def generate_true_false(anime_list):

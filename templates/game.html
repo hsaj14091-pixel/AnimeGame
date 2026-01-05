@@ -91,9 +91,12 @@
     transition: filter 0.5s;
 }
 
-/* تأثير الظل (Silhouette) */
+/* استبدل هذا الجزء */
 .silhouette-mode {
-    filter: brightness(0) invert(0.1); /* يجعل الصورة سوداء تماماً */
+    /* تم إلغاء brightness(0) لأنه يحول الصورة لمربع أسود */
+    filter: blur(12px) grayscale(100%); /* تمويه قوي + أبيض وأسود */
+    transform: scale(1.05); /* تكبير بسيط لإخفاء حواف الصورة */
+    opacity: 0.9;
 }
 /* عند الإجابة أو انتهاء الوقت نكشف الصورة */
 .reveal-image {

@@ -380,60 +380,71 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
 # === دوال الصوت الجديدة ===
 def get_animethemes_audio(mal_id, allowed_types):
     try:
-        # === الخطوة 1: الحصول على معرف الانمي (Slug) بدقة ===
-        # هذا الرابط بسيط جداً ولا يسبب خطأ 422
-        resource_url = f"https://api.animethemes.moe/resource?filter[site]=myanimelist&filter[external_id]={mal_id}&include=anime"
+        # === طريقة AMQ: طلب الأنمي مع الموارد للتحقق من الهوية ===
+        # نطلب: الأغاني + الفيديوهات + الموارد (عشان نتأكد من الـ ID)
+        url = f"https://api.animethemes.moe/anime?filter[resources][site]=myanimelist&filter[resources][external_id]={mal_id}&include=resources,animethemes.animethemeentries.videos,animethemes.song.artists"
         
-        resp = requests.get(resource_url, timeout=3)
-        if resp.status_code != 200: 
-            # print(f"DEBUG: Step 1 Failed {resp.status_code}") 
-            return None
+        resp = requests.get(url, timeout=4)
+        if resp.status_code != 200: return None
         
-        res_data = resp.json().get('resources', [])
-        if not res_data: 
-            # print(f"DEBUG: No entry found for MAL ID {mal_id}")
-            return None
+        data = resp.json()
+        
+        # التأكد من أن الاستجابة تحتوي على قائمة أنميات
+        anime_list = data.get('anime', [])
+        if not anime_list: return None
 
-        # استخراج "المعرف النصي" الخاص بالموقع (مثال: shingeki-no-kyojin)
-        anime_slug = res_data[0].get('anime', {}).get('slug')
-        real_title = res_data[0].get('anime', {}).get('name')
+        target_anime = anime_list[0]
         
-        if not anime_slug: return None
+        # === 🛑 التحقق الصارم (AMQ Verification) 🛑 ===
+        # الـ API قد يرجع أنمي خطأ (مثل .hack) إذا فشل الفلتر
+        # هنا نتأكد يدوياً أن هذا الأنمي يملك الـ MAL ID الذي طلبناه
+        is_verified = False
+        for resource in target_anime.get('resources', []):
+            if resource.get('site') == 'myanimelist' and str(resource.get('external_id')) == str(mal_id):
+                is_verified = True
+                break
+        
+        if not is_verified:
+            # طباعة للتنبيه فقط، لكن لن نوقف السيرفر
+            print(f"Skipping mismatch: Requested {mal_id}, Got {target_anime.get('name')}")
+            return None
+        # ===============================================
 
-        # === الخطوة 2: جلب الأغاني باستخدام المعرف الصحيح ===
-        anime_url = f"https://api.animethemes.moe/anime/{anime_slug}?include=animethemes.song.artists,animethemes.animethemeentries.videos"
-        resp_anime = requests.get(anime_url, timeout=3)
-        
-        if resp_anime.status_code != 200: return None
-        
-        anime_data = resp_anime.json().get('anime')
+        real_title = target_anime.get('name')
         
         # تصفية الثيمات (OP/ED)
-        themes = [t for t in anime_data.get('animethemes', []) if t['type'] in allowed_types]
-        if not themes: return None
+        themes = target_anime.get('animethemes', [])
+        valid_themes = [t for t in themes if t.get('type') in allowed_types]
         
-        sel = random.choice(themes)
-        entries = sel.get('animethemeentries', [])
+        if not valid_themes: return None
+        
+        # اختيار ثيم عشوائي
+        selected_theme = random.choice(valid_themes)
+        entries = selected_theme.get('animethemeentries', [])
         if not entries: return None
         
-        vid = entries[0].get('videos', [])[0].get('link')
+        # استخراج الفيديو
+        video = entries[0].get('videos', [])[0]
+        link = video.get('link')
         
-        # استخراج المعلومات
-        song_info = sel.get('song', {})
-        song_title = song_info.get('title', 'Unknown Title')
-        artists = song_info.get('artists', [])
-        artist_name = artists[0].get('name', 'Unknown Artist') if artists else 'Unknown Artist'
+        # استخراج معلومات الأغنية (بشكل آمن لتجنب crash)
+        song = selected_theme.get('song', {})
+        song_title = song.get('title') or "Unknown Title"
+        
+        artists = song.get('artists', [])
+        artist_name = artists[0].get('name') if artists else "Unknown Artist"
         
         return {
-            "link": vid, 
-            "info": sel['type'], 
+            "link": link, 
+            "info": selected_theme.get('type'), 
             "real_title": real_title,
             "song_name": song_title,
             "artist": artist_name
         }
 
     except Exception as e: 
-        print(f"Audio Error: {e}")
+        # طباعة الخطأ دون إيقاف اللعبة
+        print(f"Audio Error for ID {mal_id}: {e}")
         return None
         # ==============================
 

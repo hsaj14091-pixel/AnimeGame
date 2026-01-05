@@ -383,44 +383,54 @@ def get_animethemes_audio(mal_id, allowed_types):
         url = f"https://api.animethemes.moe/anime?filter[site]=myanimelist&filter[external_id]={mal_id}&include=animethemes.animethemeentries.videos"
         resp = requests.get(url, timeout=3)
         if resp.status_code != 200: return None
+        
         data = resp.json().get('anime', [])
         if not data: return None
+        
+        # === التعديل هنا: جلب الاسم الرسمي من المصدر ===
+        real_title = data[0].get('name') 
+        # ============================================
+
         themes = [t for t in data[0].get('animethemes', []) if t['type'] in allowed_types]
         if not themes: return None
+        
         sel = random.choice(themes)
-        vid = sel.get('animethemeentries', [])[0].get('videos', [])[0].get('link')
-        return {"link": vid, "info": sel['type']}
+        entries = sel.get('animethemeentries', [])
+        if not entries: return None
+        
+        vid = entries[0].get('videos', [])[0].get('link')
+        
+        return {
+            "link": vid, 
+            "info": sel['type'], 
+            "real_title": real_title  # إرجاع الاسم الحقيقي
+        }
     except: return None
 
 def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
-    # محاولة 5 مرات للعثور على أنمي له أغنية صالحة
     for _ in range(5):
         try:
-            # 1. نختار الأنمي المستهدف (صاحب الأغنية)
             target = random.choice(anime_list)
             
-            # 2. نجلب الأغنية من API
+            # جلب الأغنية + الاسم الحقيقي
             aud = get_animethemes_audio(target['mal_id'], allowed_types)
             
             if aud:
-                # 3. نجهز الاسم الصحيح
-                correct_title = target.get('title_english') or target['title']
+                # === التصحيح الجذري ===
+                # نعتمد الاسم القادم من رابط الأغنية كإجابة صحيحة
+                correct_title = aud['real_title'] 
+                # ======================
+
+                # نختار خيارات خاطئة عشوائية من القائمة
+                others = [a for a in anime_list if a['mal_id'] != target['mal_id']]
+                if len(others) < 3: continue
                 
-                # 4. نختار 3 خيارات خاطئة (يجب أن لا تكون نفس الأنمي الصحيح)
-                wrong_candidates = [a for a in anime_list if a['mal_id'] != target['mal_id']]
+                wrong_options = random.sample([a.get('title_english') or a['title'] for a in others], 3)
                 
-                # إذا لم يكن هناك خيارات كافية في القائمة، نتخطى هذا الأنمي
-                if len(wrong_candidates) < 3: 
-                    continue
-                
-                # نختار 3 أسماء عشوائية للخطأ
-                wrong_options = random.sample([a.get('title_english') or a['title'] for a in wrong_candidates], 3)
-                
-                # 5. ندمج الخيارات (3 خطأ + 1 صح)
+                # ندمج الخيارات
                 final_options = wrong_options + [correct_title]
                 random.shuffle(final_options)
                 
-                # إضافة timestamp للرابط لمنع الكاش
                 import time
                 clean_url = f"{aud['link']}?t={int(time.time())}"
                 
@@ -429,14 +439,13 @@ def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
                     "id": f"aud_{random.randint(1000,9999)}",
                     "question": f"لمن تعود أغنية الـ **{aud['info']}** هذه؟",
                     "audio_url": clean_url,
-                    "answer": correct_title,
+                    "answer": correct_title, # الإجابة الآن مطابقة للصوت 100%
                     "options": final_options,
                     "points": 400
                 }
         except Exception as e:
-            print(f"Audio Gen Error: {e}")
+            print(f"Error: {e}")
             continue
-            
     return None
 # ==========================
 def generate_true_false(anime_list):

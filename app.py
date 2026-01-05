@@ -380,30 +380,53 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
 # === دوال الصوت الجديدة ===
 def get_animethemes_audio(mal_id, allowed_types):
     try:
-        # 1. تصحيح الرابط: إضافة [resources] للفلاتر
-        url = f"https://api.animethemes.moe/anime?filter[resources][site]=myanimelist&filter[resources][external_id]={mal_id}&include=animethemes.song.artists,animethemes.animethemeentries.videos,resources"
+        # === 🟢 التغيير الجذري: البحث عن المورد (Resource) مباشرة ===
+        # هذا يضمن 100% أننا نحصل على الأنمي المطابق لـ MAL ID
+        url = f"https://api.animethemes.moe/resource?filter[site]=myanimelist&filter[external_id]={mal_id}&include=anime.animethemes.song.artists,anime.animethemes.animethemeentries.videos"
         
         resp = requests.get(url, timeout=3)
-        if resp.status_code != 200: return None
-        
-        data = resp.json().get('anime', [])
-        if not data: return None
-        
-        anime_data = data[0]
-        real_title = anime_data.get('name') 
-
-        # === 🛑 نقطة تفتيش أمنية 🛑 ===
-        # نتأكد أن الانمي الذي جلبه الـ API يملك نفس الـ MAL ID الذي طلبناه
-        # هذا يمنع مشكلة ".hack" إذا تعطل الفلتر مرة أخرى
-        found_correct_id = False
-        for res in anime_data.get('resources', []):
-            if res.get('site') == 'myanimelist' and str(res.get('external_id')) == str(mal_id):
-                found_correct_id = True
-                break
-        
-        if not found_correct_id:
-            print(f"DEBUG: Mismatch detected! Requested {mal_id} but got {real_title}. Skipping...")
+        if resp.status_code != 200: 
+            print(f"DEBUG: API returned {resp.status_code}")
             return None
+        
+        data = resp.json().get('resources', [])
+        if not data: 
+            print(f"DEBUG: No resource found for MAL ID {mal_id}")
+            return None
+        
+        # نستخرج الانمي من داخل المورد
+        anime_data = data[0].get('anime')
+        if not anime_data: return None
+
+        real_title = anime_data.get('name') 
+        
+        # الآن نختار الثيمات من داخل الانمي
+        themes = [t for t in anime_data.get('animethemes', []) if t['type'] in allowed_types]
+        if not themes: 
+            print(f"DEBUG: Anime found ({real_title}) but no {allowed_types} themes.")
+            return None
+        
+        sel = random.choice(themes)
+        entries = sel.get('animethemeentries', [])
+        if not entries: return None
+        
+        vid = entries[0].get('videos', [])[0].get('link')
+        
+        song_info = sel.get('song', {})
+        song_title = song_info.get('title', 'Unknown Title')
+        artists = song_info.get('artists', [])
+        artist_name = artists[0].get('name', 'Unknown Artist') if artists else 'Unknown Artist'
+        
+        return {
+            "link": vid, 
+            "info": sel['type'], 
+            "real_title": real_title,
+            "song_name": song_title,
+            "artist": artist_name
+        }
+    except Exception as e: 
+        print(f"Error extracting audio: {e}")
+        return None
         # ==============================
 
         themes = [t for t in anime_data.get('animethemes', []) if t['type'] in allowed_types]

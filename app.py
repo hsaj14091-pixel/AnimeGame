@@ -386,14 +386,14 @@ def get_itunes_audio(anime_title):
         # 1. تنظيف الاسم
         clean_title = anime_title.split(':')[0].split('(')[0].strip()
         
-        # 2. إعداد البحث (لاحظ التغيير الكبير هنا)
+        # 2. البحث في المتجر الياباني (نتائج أكثر لتصفية أفضل)
         url = "https://itunes.apple.com/search"
         params = {
-            "term": clean_title,   # نبحث باسم الانمي فقط
-            "country": "JP",       # 🇯🇵 إجبار البحث في المتجر الياباني
+            "term": clean_title, 
+            "country": "JP",
             "media": "music",
             "entity": "song",
-            "limit": 10
+            "limit": 50  # نجلب 50 نتيجة لنفرزها براحتنا
         }
         
         resp = requests.get(url, params=params, timeout=3)
@@ -402,22 +402,35 @@ def get_itunes_audio(anime_title):
         results = resp.json().get('results', [])
         if not results: return None
         
-        # 3. نظام الفلترة الذكي (لنقبل الأنمي فقط)
+        # === 🛑 القائمة السوداء (Blacklist) 🛑 ===
+        # أي أغنية تحتوي عنوانها أو اسم فنانها على هذه الكلمات سنطردها
+        banned_words = [
+            'remix', 'cover', 'lofi', 'beats', 'trap', 'piano', 
+            'guitar', 'version', 'instrumental', 'orchestral', 
+            'music box', '8-bit', 'karaoke', 'arrangement'
+        ]
+        
         valid_tracks = []
         for track in results:
-            # نتأكد أن التصنيف هو أنمي أو موسيقى يابانية
-            genre = track.get('primaryGenreName', '').lower()
-            kind = track.get('kind', '')
+            track_name = track.get('trackName', '').lower()
+            artist_name = track.get('artistName', '').lower()
+            collection_name = track.get('collectionName', '').lower()
             
-            # كلمات مفتاحية مقبولة
-            accepted_genres = ['anime', 'soundtrack', 'j-pop', 'j-rock', 'rock', 'animation']
+            # فحص الكلمات المحظورة
+            if any(bad in track_name for bad in banned_words) or \
+               any(bad in artist_name for bad in banned_words) or \
+               any(bad in collection_name for bad in banned_words):
+                continue
             
-            if kind == 'song' and any(g in genre for g in accepted_genres):
-                valid_tracks.append(track)
+            # 🟢 ميزة إضافية: نفضل الأغاني التي تحتوي على TV Size أو Anime
+            # لكننا سنقبل الكل ما عدا المحظور
+            valid_tracks.append(track)
         
-        # إذا لم نجد شيئاً بعد الفلترة، نأخذ أي نتيجة من اليابان وخلاص
-        final_pool = valid_tracks if valid_tracks else results
+        # إذا بعد التصفية لم يتبق شيء، نعود للبحث الخام (أفضل من لا شيء)
+        # لكن غالباً سنجد شيئاً نظيفاً
+        final_pool = valid_tracks if valid_tracks else results[:5]
         
+        # نختار عشوائياً من "النظيف"
         track = random.choice(final_pool)
         
         return {

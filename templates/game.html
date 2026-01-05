@@ -348,19 +348,26 @@
 
         function checkNormal(selected, btn) {
             if(isAnswered) return;
+            
+            // === 🛑 إصلاح 1: إيقاف صوت اللعبة فوراً عند الضغط ===
+            const gameAudio = document.getElementById('game-audio');
+            if(gameAudio) { 
+                gameAudio.pause(); 
+                gameAudio.currentTime = 0; // إرجاع للصفر للتأكد
+            }
+            // ====================================================
+
             const correct = currentData.answer;
             
             if(selected === correct) {
-                btn.classList.add('btn-correct'); // تلوين زر اللاعب بالأخضر
+                btn.classList.add('btn-correct');
                 triggerSuccess();
             } else {
-                btn.classList.add('btn-wrong'); // تلوين زر اللاعب بالأحمر
-                highlightCorrectBtn(correct); // تلوين الإجابة الصحيحة بالأخضر
+                btn.classList.add('btn-wrong');
+                highlightCorrectBtn(correct);
                 
-                // تشغيل صوت الخطأ فوراً
                 soundWrong.currentTime = 0; soundWrong.play();
 
-                // ننتظر 1.5 ثانية قبل إرسال النتيجة للسيرفر لكي يرى اللاعب الخطأ
                 setTimeout(() => {
                     triggerFailure();
                 }, 1500); 

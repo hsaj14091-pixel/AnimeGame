@@ -388,10 +388,10 @@ def get_itunes_audio(anime_title):
         url = "https://itunes.apple.com/search"
         params = {
             "term": clean_title, 
-            "country": "JP",
+            "country": "JP",       # المتجر الياباني
             "media": "music",
             "entity": "song",
-            "limit": 100  # جلبنا 100 نتيجة لنفرز بصرامة
+            "limit": 200           # نجلب عدد كبير لنبحث عن "الإبرة في الكومة"
         }
         
         resp = requests.get(url, params=params, timeout=3)
@@ -400,48 +400,42 @@ def get_itunes_audio(anime_title):
         results = resp.json().get('results', [])
         if not results: return None
         
-        # === 🛑 القائمة السوداء للفنانين والكلمات 🛑 ===
-        # هؤلاء مشهورين بالتقليد ويجب حظرهم بالاسم
-        banned_artists = [
-            'animenz', 'animenzz', 'pellek', 'raon lee', 'theishter', 
-            'rifti', 'kobasolo', 'studio ghibli piano', 'relaxing piano',
-            'starbomb', 'natewantstobattle', 'jonathan young', 'caleb hyles',
-            'cover', 'tribute', 'project', 'band'
-        ]
-        
-        banned_terms = [
-            'cover', 'remix', 'lofi', 'beats', 'trap', 'piano', 
-            'guitar', 'version', 'instrumental', 'orchestral', 
-            'music box', '8-bit', 'karaoke', 'arrangement', 'ringtone'
-        ]
+        # كلمات محظورة (للتأكد فقط)
+        banned_terms = ['cover', 'remix', 'lofi', 'beats', 'trap', 'piano', 'guitar', 'version', 'english', '英語版']
+        banned_artists = ['animenz', 'pellek', 'raon', 'rifti', 'kobasolo']
 
         valid_tracks = []
         for track in results:
             t_name = track.get('trackName', '').lower()
             a_name = track.get('artistName', '').lower()
             c_name = track.get('collectionName', '').lower() # اسم الألبوم
+            genre = track.get('primaryGenreName', '').lower() # التصنيف الرسمي
             
-            # 1. فحص اسم الفنان (Artist)
-            if any(bad in a_name for bad in banned_artists): continue
+            # 1. فلترة المحظورات أولاً
+            if any(bad in t_name for bad in banned_terms) or \
+               any(bad in c_name for bad in banned_terms) or \
+               any(bad in a_name for bad in banned_artists):
+                continue
+
+            # 2. === 🛡️ الفلترة الإيجابية (الصارمة) 🛡️ ===
+            # الشرط: يجب أن يكون التصنيف "أنمي" صراحةً
+            is_anime_genre = 'anime' in genre or 'animation' in genre
             
-            # 2. فحص اسم الأغنية (Track Name)
-            if any(bad in t_name for bad in banned_terms): continue
+            # أو: يكون التصنيف ساوند تراك، لكن الألبوم يحتوي كلمة أنمي
+            is_soundtrack_anime = ('soundtrack' in genre) and ('anime' in c_name or 'animation' in c_name or 'original' in c_name)
             
-            # 3. فحص اسم الألبوم (Collection Name) - مهم جداً
-            # الألبومات المقلدة غالباً تحتوي على Cover أو Piano Collection
-            if any(bad in c_name for bad in banned_terms): continue
-            
-            # 4. (اختياري) تفضيل النتائج التي تحتوي على كلمات رسمية
-            # إذا أردت دقة 100%، يمكنك تفعيل هذا الشرط، لكنه قد يقلل النتائج جداً
-            # if 'animation' not in c_name and 'soundtrack' not in c_name and 'original' not in c_name:
-            #     continue 
+            # أو: يكون J-Pop لكن الألبوم يصرخ بأنه أنمي (TV Size, Animation, etc)
+            is_jpop_anime = ('j-pop' in genre) and ('anime' in c_name or 'tv' in t_name)
+
+            # إذا لم يتحقق أي شرط من شروط الأنمي، ارمِ الأغنية
+            if not (is_anime_genre or is_soundtrack_anime or is_jpop_anime):
+                continue
 
             valid_tracks.append(track)
         
-        if not valid_tracks: 
-            return None # نفضل عدم إظهار سؤال على إظهار Animenzz
+        if not valid_tracks: return None # إذا لم نجد أغنية "أنمي" حقيقية، نتجاوز السؤال
             
-        # نختار عشوائياً من القائمة النظيفة
+        # نختار عشوائياً من القائمة الموثقة
         track = random.choice(valid_tracks)
         
         return {

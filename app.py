@@ -448,30 +448,7 @@ def get_animethemes_audio(mal_id, allowed_types):
         return None
         # ==============================
 
-        themes = [t for t in anime_data.get('animethemes', []) if t['type'] in allowed_types]
-        if not themes: return None
-        
-        sel = random.choice(themes)
-        entries = sel.get('animethemeentries', [])
-        if not entries: return None
-        
-        vid = entries[0].get('videos', [])[0].get('link')
-        
-        song_info = sel.get('song', {})
-        song_title = song_info.get('title', 'Unknown Title')
-        artists = song_info.get('artists', [])
-        artist_name = artists[0].get('name', 'Unknown Artist') if artists else 'Unknown Artist'
-        
-        return {
-            "link": vid, 
-            "info": sel['type'], 
-            "real_title": real_title,
-            "song_name": song_title,
-            "artist": artist_name
-        }
-    except Exception as e: 
-        print(f"Error extracting audio: {e}")
-        return None
+
 
 def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
     for _ in range(5):

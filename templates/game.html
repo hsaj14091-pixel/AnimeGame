@@ -183,7 +183,7 @@
         let timerInterval;
         let timeLeft = 0;
         let isAnswered = false;
-        
+        let currentAudio = null;
         const soundCorrect = new Audio("{{ url_for('static', filename='sounds/correct.mp3') }}");
         const soundWrong = new Audio("{{ url_for('static', filename='sounds/wrong.mp3') }}");
         const soundTimeout = new Audio("{{ url_for('static', filename='sounds/timeout.mp3') }}");
@@ -250,17 +250,28 @@
             // تفريغ المحتوى السابق
             const contentDiv = document.getElementById('dynamic-content');
             contentDiv.innerHTML = ''; 
-            // === 🎵 كود الصوت الجديد 🎵 ===
-            if (data.mode === 'audio') {
-                let audio = new Audio(data.audio_url);
-                audio.id = 'game-audio'; audio.volume = 0.5;
-                audio.addEventListener('loadedmetadata', function() {
-                    if(audio.duration > 30) audio.currentTime = Math.random() * (audio.duration - 25);
-                    audio.play().catch(e => console.log("Auto-play blocked"));
-                });
-                audio.play().catch(e => console.log("Waiting interaction"));
-                contentDiv.innerHTML += `<div class="audio-visualizer">🎵</div><p style="color:#aaa">استمع للمقطع...</p>`;
-            }
+           // === 🎵 كود الصوت المصحح 🎵 ===
+if (data.mode === 'audio') {
+    // 1. إيقاف أي صوت سابق فوراً وتدميره
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+        currentAudio = null;
+    }
+
+    // 2. إنشاء صوت جديد وتخزينه في المتغير العام
+    currentAudio = new Audio(data.audio_url);
+    currentAudio.volume = 0.5;
+
+    currentAudio.addEventListener('loadedmetadata', function() {
+        if(currentAudio.duration > 30) currentAudio.currentTime = Math.random() * (currentAudio.duration - 25);
+        currentAudio.play().catch(e => console.log("Auto-play blocked"));
+    });
+    currentAudio.play().catch(e => console.log("Waiting interaction"));
+
+    contentDiv.innerHTML += `<div class="audio-visualizer">🎵</div><p style="color:#aaa">استمع للمقطع...</p>`;
+}
+// ================================
             // ================================
             // === إضافة جديدة: معالجة الصور ===
             let imageHTML = '';
@@ -348,12 +359,11 @@
 
         function checkNormal(selected, btn) {
             if(isAnswered) return;
-            
-            // === 🛑 إصلاح 1: إيقاف صوت اللعبة فوراً عند الضغط ===
-            const gameAudio = document.getElementById('game-audio');
-            if(gameAudio) { 
-                gameAudio.pause(); 
-                gameAudio.currentTime = 0; // إرجاع للصفر للتأكد
+
+   			 // === 🛑 الإيقاف الصحيح للصوت ===
+   			 if (currentAudio) {
+       			 currentAudio.pause();
+        		currentAudio.currentTime = 0;
             }
             // ====================================================
 
@@ -394,17 +404,14 @@
         }
 
         function submitResult(isCorrect) {
-            // === 🛑 الحل النهائي لإيقاف الصوت 🛑 ===
-            const audio = document.getElementById('game-audio');
-            if (audio) {
-                audio.pause();
-                audio.currentTime = 0;
-                audio.src = ""; // مسح الرابط تماماً لقتل الصوت
-                audio.remove(); // حذف العنصر من الصفحة
-            }
-            // ========================================
+            if (currentAudio) {
+        	currentAudio.pause();
+       	 	currentAudio.currentTime = 0;
+        	currentAudio = null;
+    }
+    // ========================================
 
-            isAnswered = true;
+    isAnswered = true;
             clearInterval(timerInterval);
             
             // كشف الصورة المخفية (إن وجدت)

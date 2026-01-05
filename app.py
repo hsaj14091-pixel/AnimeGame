@@ -380,16 +380,14 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
 # === دوال الصوت الجديدة ===
 def get_animethemes_audio(mal_id, allowed_types):
     try:
-        url = f"https://api.animethemes.moe/anime?filter[site]=myanimelist&filter[external_id]={mal_id}&include=animethemes.animethemeentries.videos"
+        url = f"https://api.animethemes.moe/anime?filter[site]=myanimelist&filter[external_id]={mal_id}&include=animethemes.song.artists,animethemes.animethemeentries.videos"
         resp = requests.get(url, timeout=3)
         if resp.status_code != 200: return None
         
         data = resp.json().get('anime', [])
         if not data: return None
         
-        # === التعديل هنا: جلب الاسم الرسمي من المصدر ===
         real_title = data[0].get('name') 
-        # ============================================
 
         themes = [t for t in data[0].get('animethemes', []) if t['type'] in allowed_types]
         if not themes: return None
@@ -400,38 +398,51 @@ def get_animethemes_audio(mal_id, allowed_types):
         
         vid = entries[0].get('videos', [])[0].get('link')
         
+        # === استخراج بيانات الأغنية للطباعة ===
+        song_info = sel.get('song', {})
+        song_title = song_info.get('title', 'Unknown Title')
+        artists = song_info.get('artists', [])
+        artist_name = artists[0].get('name', 'Unknown Artist') if artists else 'Unknown Artist'
+        # ====================================
+        
         return {
             "link": vid, 
             "info": sel['type'], 
-            "real_title": real_title  # إرجاع الاسم الحقيقي
+            "real_title": real_title,
+            "song_name": song_title,    # جديد
+            "artist": artist_name       # جديد
         }
-    except: return None
+    except Exception as e: 
+        print(f"Error extracting audio: {e}")
+        return None
 
 def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
     for _ in range(5):
         try:
             target = random.choice(anime_list)
-            
-            # 1. نحدد الاسم من قاعدتك أنت (لضمان أنه بالإنجليزية ومطابق لباقي الخيارات)
             local_title = target.get('title_english') or target['title']
             
-            # 2. نجلب الأغنية
             aud = get_animethemes_audio(target['mal_id'], allowed_types)
             
             if aud:
-                # طباعة للتأكد في الشاشة السوداء (تساعدك تعرف الخلل لو تكرر)
-                print(f"DEBUG: Playing {local_title} (ID: {target['mal_id']})")
-
-                # 3. نختار الخيارات الخاطئة
+                # === 🛑 هنا الطباعة التي طلبتها لكشف الحقيقة 🛑 ===
+                print("\n" + "="*50)
+                print(f"DEBUG: Anime Name (DB): {local_title}")
+                print(f"DEBUG: Anime Name (API): {aud['real_title']}")
+                print(f"DEBUG: Song Title: {aud['song_name']}")  # اسم الأغنية
+                print(f"DEBUG: Artist: {aud['artist']}")          # اسم المغني
+                print(f"DEBUG: URL: {aud['link']}")               # الرابط
+                print("="*50 + "\n")
+                # =================================================
+                
                 others = [a for a in anime_list if a['mal_id'] != target['mal_id']]
                 if len(others) < 3: continue
                 
                 wrong_options = random.sample([a.get('title_english') or a['title'] for a in others], 3)
-                
-                # 4. ندمج الخيارات (الاسم المحلي + الخطأ)
                 final_options = wrong_options + [local_title]
                 random.shuffle(final_options)
                 
+                # إضافة timestamp للرابط لمنع الكاش نهائياً من جهة البايثون أيضاً
                 import time
                 clean_url = f"{aud['link']}?t={int(time.time())}"
                 
@@ -440,11 +451,13 @@ def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
                     "id": f"aud_{random.randint(1000,9999)}",
                     "question": f"لمن تعود أغنية الـ **{aud['info']}** هذه؟",
                     "audio_url": clean_url,
-                    "answer": local_title, # استخدام الاسم المحلي
+                    "answer": local_title,
                     "options": final_options,
                     "points": 400
                 }
-        except: continue
+        except Exception as e: 
+            print(f"Gen Error: {e}")
+            continue
     return None
 # ==========================
 def generate_true_false(anime_list):

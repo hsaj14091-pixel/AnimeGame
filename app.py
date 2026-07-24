@@ -34,20 +34,66 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 DB_NAME = "anime_game.db"
 COMMON_STUDIOS = ["Toei Animation", "MAPPA", "Madhouse", "Bones", "Sunrise", "Pierrot", "A-1 Pictures", "Wit Studio", "Ufotable", "Studio Ghibli", "J.C.Staff"]
 
-# --- دالة الاتصال بـ API (كانت مفقودة) ---
+HTTP_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
+
+API_CACHE = {}
+CHARACTER_CACHE = {}
+THEME_CACHE = {}
+
+# --- دالة الاتصال بـ API مع كاش وترويسات ---
 def get_data_from_api(endpoint, params=None):
     if params is None: params = {}
+    cache_key = f"{endpoint}_{json.dumps(params, sort_keys=True)}"
+    if cache_key in API_CACHE:
+        return API_CACHE[cache_key]
+        
     url = f"https://api.jikan.moe/v4/{endpoint}"
     try:
-        # تأخير بسيط لتجنب الحظر من Jikan
-        time.sleep(0.5) 
-        response = requests.get(url, params=params, timeout=5)
+        time.sleep(0.3) 
+        response = requests.get(url, params=params, headers=HTTP_HEADERS, timeout=5)
         if response.status_code == 200:
-            return response.json().get('data', [])
+            data = response.json().get('data', [])
+            API_CACHE[cache_key] = data
+            return data
         return None
     except Exception as e:
         print(f"API Error: {e}")
         return None
+
+def get_animethemes_media(mal_id, anime_title=""):
+    """جلب شارات الفيديو والصوت من Animethemes API بدقة لاسم الأنمي"""
+    cache_key = f"{mal_id}_{anime_title}"
+    if cache_key in THEME_CACHE:
+        return THEME_CACHE[cache_key]
+        
+    try:
+        if anime_title:
+            clean_title = anime_title.split(':')[0].split('(')[0].strip()
+            # البحث المباشر بفلتر اسم الأنمي
+            url = f"https://api.animethemes.moe/anime?filter[name]={urllib.parse.quote(clean_title)}&include=animethemes.animethemeentries.videos,animethemes.song"
+            resp = requests.get(url, headers=HTTP_HEADERS, timeout=4)
+            if resp.status_code == 200:
+                data = resp.json().get('anime', [])
+                if data and data[0].get('animethemes'):
+                    THEME_CACHE[cache_key] = data[0]['animethemes']
+                    return data[0]['animethemes']
+
+            # محاولة ثانية بالاسم الكامل إذا اختلف
+            if clean_title != anime_title:
+                url_full = f"https://api.animethemes.moe/anime?filter[name]={urllib.parse.quote(anime_title)}&include=animethemes.animethemeentries.videos,animethemes.song"
+                resp_full = requests.get(url_full, headers=HTTP_HEADERS, timeout=4)
+                if resp_full.status_code == 200:
+                    data_full = resp_full.json().get('anime', [])
+                    if data_full and data_full[0].get('animethemes'):
+                        THEME_CACHE[cache_key] = data_full[0]['animethemes']
+                        return data_full[0]['animethemes']
+    except Exception as e:
+        print(f"Animethemes Error: {e}")
+        
+    THEME_CACHE[cache_key] = []
+    return []
 # ==========================================
 #  1. دوال مساعدة (الإيميل، القاعدة، الكابتشا)
 # ==========================================
@@ -213,56 +259,42 @@ def generate_sort_year(anime_list):
     return {"mode": "sorting", "id": f"sort_year_{random.randint(1000,9999)}", "question": "رتب الأنميات زمنياً من **الأقدم** (بالأعلى) إلى **الأحدث**:", "drag_items": display_items, "correct_order": json.dumps(correct_ids)}
 def generate_image_character(anime_list, mode='normal'):
     """
-    تولد سؤال صورة:
-    mode='normal': صورة واضحة
-    mode='silhouette': صورة ظل (ستتم معالجتها في CSS)
+    تولد سؤال صورة (شخصية أو بوستر العمل كـ fallback)
     """
     try:
-        # نختار أنمي عشوائي
         target = random.choice(anime_list)
-        
-        # نجلب الشخصيات من API
-        chars = get_data_from_api(f"anime/{target['mal_id']}/characters")
-        if not chars: return None
-        
-        # نختار الشخصيات الرئيسية فقط لضمان جودة الصور
-        main_chars = [c for c in chars if c['role'] == 'Main']
-        if not main_chars: return None
-        
-        selected_char = random.choice(main_chars)
-        char_name = selected_char['character']['name']
-        char_image = selected_char['character']['images']['jpg']['image_url']
-        
-        # الخيارات الخاطئة (شخصيات من أنميات أخرى)
         others = [a for a in anime_list if a['mal_id'] != target['mal_id']]
         if len(others) < 3: return None
-        
-        # نجلب أسماء شخصيات عشوائية من أنميات أخرى لتمويه الخيارات (تزييف ذكي)
-        # ملاحظة: للسرعة سنضع أسماء الأنميات كخيارات، أو يمكنك تعقيدها بجلب أسماء شخصيات أخرى
-        # هنا سنسأل: "من هذه الشخصية؟" والخيارات أسماء شخصيات
-        
-        # (للتبسيط حالياً سنجعل السؤال: من أي أنمي هذه الشخصية؟ لأنه أسرع ولا يحتاج طلبات API إضافية للخيارات الخاطئة)
-        # لكن بما أنك طلبت "اسم الشخصية"، سنحتاج لأسماء وهمية.
-        # سنقوم بحيلة: نستخدم أسماء عشوائية موجودة مسبقاً أو أسماء أنميات كخيارات إذا لم نستطع جلب شخصيات
-        
-        # الخيار الأفضل والأسرع حالياً: "من صاحب هذه الصورة؟"
-        # الخيارات الخاطئة: سنولد أسماء يابانية عشوائية أو نستخدم أسماء أنميات كبديل مؤقت
-        # لنجعل السؤال عن "اسم الشخصية" ونستخدم أسماء شخصيات أخرى من نفس القائمة الحالية (تتطلب طلبات كثيرة)
-        # **الحل العملي السريع:** السؤال عن "اسم الأنمي" من خلال صورة الشخصية.
-        
+
         correct_answer = target.get('title_english') or target['title']
         wrong_options = [a.get('title_english') or a['title'] for a in random.sample(others, 3)]
-        
         options = wrong_options + [correct_answer]
         random.shuffle(options)
-        
+
+        char_image = None
         q_text = "من أي أنمي هذه الشخصية؟"
+
+        # نجلب الشخصيات أولاً
+        chars = get_data_from_api(f"anime/{target['mal_id']}/characters")
+        if chars:
+            main_chars = [c for c in chars if c['role'] == 'Main']
+            if main_chars:
+                selected_char = random.choice(main_chars)
+                char_image = selected_char['character']['images']['jpg']['image_url']
+
+        # Fallback إلى بوستر الأنمي نفسه في حال عدم وجود صورة شخصية
+        if not char_image:
+            char_image = target.get('images', {}).get('jpg', {}).get('image_url')
+            q_text = "خمن الأنمي من صورة البوستر الرسمية!"
+
+        if not char_image: return None
+
         if mode == 'silhouette':
-            q_text = "خمن الأنمي من خلال ظل الشخصية!"
+            q_text = "خمن الأنمي من خلال ظل الصورة!"
 
         return {
             "mode": "image", 
-            "sub_mode": mode, # normal or silhouette
+            "sub_mode": mode,
             "id": f"img_{mode}_{random.randint(1000,9999)}", 
             "question": q_text, 
             "image": char_image,
@@ -381,109 +413,151 @@ def generate_smart_character(anime_list, difficulty_mode='medium'):
 # ==========================================
 #  دالة جلب الصوت من Deezer (البديل الموثوق)
 # ==========================================
+#  دوال الوسائط (الصوت والفيديو)
+# ==========================================
 def get_deezer_audio(anime_title):
     try:
-        # 1. تنظيف الاسم
         clean_title = anime_title.split(':')[0].split('(')[0].strip()
-        
-        # 2. البحث في Deezer
-        # نضيف كلمة OST للبحث لنحاول اصطياد الألبوم الرسمي فوراً
         url = "https://api.deezer.com/search"
-        params = {
-            "q": f'{clean_title} OST', # نبحث عن الساوند تراك مباشرة
-            "limit": 25
-        }
-        
-        resp = requests.get(url, params=params, timeout=3)
+        params = {"q": f'{clean_title} OST', "limit": 25}
+        resp = requests.get(url, params=params, headers=HTTP_HEADERS, timeout=3)
         if resp.status_code != 200: return None
-        
         data = resp.json().get('data', [])
-        
-        # إذا لم نجد نتائج مع كلمة OST، نبحث بالاسم فقط (محاولة ثانية)
         if not data:
             params['q'] = clean_title
-            resp = requests.get(url, params=params, timeout=3)
+            resp = requests.get(url, params=params, headers=HTTP_HEADERS, timeout=3)
             data = resp.json().get('data', [])
 
         if not data: return None
-        
-        # === 🛑 فلترة النتائج 🛑 ===
         banned_words = ['cover', 'remix', 'piano', 'metal', 'lofi', 'live', 'concert', 'version', 'english']
         valid_tracks = []
-        
         for track in data:
             title = track.get('title', '').lower()
             artist = track.get('artist', {}).get('name', '').lower()
             album = track.get('album', {}).get('title', '').lower()
-            
-            # 1. طرد الكلمات المحظورة
             if any(bad in title for bad in banned_words) or \
                any(bad in album for bad in banned_words) or \
                any(bad in artist for bad in banned_words):
                 continue
-            
-            # 2. التأكد من وجود رابط معاينة (MP3)
             if not track.get('preview'): continue
-            
             valid_tracks.append(track)
             
         if not valid_tracks: return None
-
-        # نختار عشوائياً من النتائج النظيفة
         track = random.choice(valid_tracks)
-        
         return {
             "link": track.get('preview'),
-            "info": "OST", 
-            "real_title": anime_title, 
             "song_name": track.get('title'),
             "artist": track.get('artist', {}).get('name')
         }
-
     except Exception as e:
         print(f"Deezer Error: {e}")
         return None
 
-# ==========================================
-#  دالة توليد السؤال (تحديث لاستخدام Deezer)
-# ==========================================
+def generate_video_question(anime_list, allowed_types=['OP', 'ED']):
+    for _ in range(5):
+        try:
+            target = random.choice(anime_list)
+            mal_id = target['mal_id']
+            local_title = target.get('title_english') or target['title']
+            
+            themes = get_animethemes_media(mal_id, local_title)
+            if not themes: continue
+            
+            valid_videos = []
+            for theme in themes:
+                t_type = theme.get('type')
+                if allowed_types and t_type not in allowed_types:
+                    continue
+                entries = theme.get('animethemeentries', [])
+                song_t = theme.get('song', {}).get('title', '') if theme.get('song') else ''
+                for entry in entries:
+                    for v in entry.get('videos', []):
+                        v_link = v.get('link')
+                        if v_link and (v_link.endswith('.mp4') or v_link.endswith('.webm')):
+                            valid_videos.append((v_link, song_t))
+            
+            if not valid_videos: continue
+            chosen_video, song_title = random.choice(valid_videos)
+            others = [a for a in anime_list if a['mal_id'] != mal_id]
+            if len(others) < 3: continue
+            
+            wrong_options = random.sample([a.get('title_english') or a['title'] for a in others], 3)
+            final_options = wrong_options + [local_title]
+            random.shuffle(final_options)
+            
+            return {
+                "mode": "video",
+                "id": f"vid_{random.randint(1000,9999)}",
+                "question": "تأمل فيديو الشارة: من أي أنمي هذه الشارة؟",
+                "video_url": chosen_video,
+                "answer": local_title,
+                "options": final_options,
+                "points": 350
+            }
+        except Exception as e:
+            print(f"Video Gen Error: {e}")
+            continue
+    return None
+
 def generate_audio_question(anime_list, allowed_types=['OP', 'ED']):
     for _ in range(5): 
         try:
             target = random.choice(anime_list)
+            mal_id = target['mal_id']
             local_title = target.get('title_english') or target['title']
             
-            # 👇👇 استخدام دالة Deezer الجديدة 👇👇
-            aud = get_deezer_audio(local_title)
+            audio_url = None
+            song_name = ""
+            artist_name = ""
             
-            if aud and aud['link']: 
-                
-                others = [a for a in anime_list if a['mal_id'] != target['mal_id']]
+            # 1. التجربة من Animethemes أولاً
+            themes = get_animethemes_media(mal_id, local_title)
+            if themes:
+                valid_audios = []
+                for theme in themes:
+                    t_type = theme.get('type')
+                    if allowed_types and t_type not in allowed_types: continue
+                    entries = theme.get('animethemeentries', [])
+                    s_title = theme.get('song', {}).get('title', 'OP/ED') if theme.get('song') else 'OP/ED'
+                    for entry in entries:
+                        for v in entry.get('videos', []):
+                            if v.get('link'):
+                                valid_audios.append((v.get('link'), s_title))
+                if valid_audios:
+                    audio_url, song_name = random.choice(valid_audios)
+                    artist_name = "Theme Song"
+
+            # 2. التجربة من Deezer إذا لم يتوفر في Animethemes
+            if not audio_url:
+                aud = get_deezer_audio(local_title)
+                if aud and aud.get('link'):
+                    audio_url = aud['link']
+                    song_name = aud.get('song_name', '')
+                    artist_name = aud.get('artist', '')
+            
+            if audio_url:
+                others = [a for a in anime_list if a['mal_id'] != mal_id]
                 if len(others) < 3: continue
                 
                 wrong_options = random.sample([a.get('title_english') or a['title'] for a in others], 3)
                 final_options = wrong_options + [local_title]
                 random.shuffle(final_options)
                 
-                # إضافة التوقيت لمنع الكاش
-                import time
-                clean_url = f"{aud['link']}?t={int(time.time())}"
-                
+                clean_url = f"{audio_url}?t={int(time.time())}" if '?' not in audio_url else audio_url
                 return {
                     "mode": "audio",
                     "id": f"aud_{random.randint(1000,9999)}",
-                    "question": f"لمن تعود هذه الأغنية؟ <br><small>({aud['song_name']} by {aud['artist']})</small>",
+                    "question": "استمع للمقطع الصوتي: لمن تعود هذه الشارة/الأغنية؟",
                     "audio_url": clean_url,
                     "answer": local_title,
                     "options": final_options,
                     "points": 300
                 }
         except Exception as e:
-            print(f"Gen Loop Error: {e}")
+            print(f"Audio Gen Error: {e}")
             continue
     return None
 
-# ==========================
 def generate_true_false(anime_list):
     try:
         target = random.choice(anime_list)
@@ -498,10 +572,8 @@ def generate_true_false(anime_list):
     except: return None
 
 # ==========================================
-#  نظام الفلاتر (يجب أن يكون أسفل الدوال)
+#  نظام الفلاتر الموحد
 # ==========================================
-
-# 1. تعريف الخريطة (الآن الدوال معرفة ولن يحدث خطأ)
 GENERATORS_MAP = {
     'character': [
         generate_smart_character, 
@@ -516,7 +588,11 @@ GENERATORS_MAP = {
     'image': [
         lambda lst: generate_image_character(lst, 'normal'),
         lambda lst: generate_image_character(lst, 'silhouette')
-    ]
+    ],
+    'audio_op': [lambda lst: generate_audio_question(lst, ['OP'])],
+    'audio_ed': [lambda lst: generate_audio_question(lst, ['ED'])],
+    'video_op': [lambda lst: generate_video_question(lst, ['OP'])],
+    'video_ed': [lambda lst: generate_video_question(lst, ['ED'])]
 }
 
 # 2. دالة مساعدة لدمج الفلاتر
@@ -728,37 +804,7 @@ def change_password():
 def logout():
     session.clear()
     return redirect(url_for('home'))
-# ... (بعد تعريف COMMON_STUDIOS)
-
-# خريطة تربط نوع الفلتر بدوال التوليد المناسبة
-GENERATORS_MAP = {
-    'character': [
-        generate_smart_character, 
-        generate_common_link, 
-        lambda lst: generate_image_character(lst, 'normal'), 
-        lambda lst: generate_image_character(lst, 'silhouette')
-    ],
-    'studio': [generate_imposter_question, generate_reverse_studio, generate_classic_studio],
-    'year': [generate_sort_year, generate_classic_year],
-    'score': [generate_sort_score],
-    'general': [generate_true_false],
-    'audio_op': [lambda lst: generate_audio_question(lst, ['OP'])],
-    'audio_ed': [lambda lst: generate_audio_question(lst, ['ED'])]
-}
-
-# دالة مساعدة لدمج الفلاتر المختارة
-def get_allowed_generators(selected_filters):
-    if not selected_filters: # إذا لم يختار اللاعب شيئاً، نرجع كل شيء
-        all_gens = []
-        for gens in GENERATORS_MAP.values():
-            all_gens.extend(gens)
-        return list(set(all_gens)) # إزالة التكرار إن وجد
-    
-    allowed = []
-    for key in selected_filters:
-        if key in GENERATORS_MAP:
-            allowed.extend(GENERATORS_MAP[key])
-    return allowed if allowed else get_allowed_generators(None) # احتياط
+# (تم التوحيد في الأعلى)
 
 @app.route('/get_question/<difficulty>')
 def get_question(difficulty):
@@ -1034,4 +1080,4 @@ def fix_db():
         return jsonify({"status": "error", "message": str(e)})
 if __name__ == '__main__':
     # تأكد من أن debug=True لترت الأخطاء، والمنفذ 5000
-    socketio.run(app, debug=True, port=5000)
+    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True)

@@ -150,9 +150,10 @@
         <label class="filter-option"><input type="checkbox" value="year" checked> تواريخ</label>
         <label class="filter-option"><input type="checkbox" value="score" checked> تقييمات</label>
         <label class="filter-option"><input type="checkbox" value="general" checked> عام</label>
-	<label class="filter-option"><input type="checkbox" value="audio_op" checked> شارات بداية (OP)</label>
-	<label class="filter-option"><input type="checkbox" value="audio_ed" checked> شارات نهاية (ED)</label>
-
+	<label class="filter-option"><input type="checkbox" value="audio_op" checked> 🎵 شارات بداية (صوت)</label>
+	<label class="filter-option"><input type="checkbox" value="audio_ed" checked> 🎵 شارات نهاية (صوت)</label>
+	<label class="filter-option"><input type="checkbox" value="video_op" checked> 🎬 شارات بداية (فيديو)</label>
+	<label class="filter-option"><input type="checkbox" value="video_ed" checked> 🎬 شارات نهاية (فيديو)</label>
     </div>
     <h3 style="color:white; margin:15px 0 10px">اختر الصعوبة:</h3>
     
@@ -261,25 +262,29 @@
             const contentDiv = document.getElementById('dynamic-content');
             contentDiv.innerHTML = ''; 
 
+            // === 🎬 معالجة الفيديو 🎬 ===
+            if (data.mode === 'video') {
+                stopCurrentAudio();
+                contentDiv.innerHTML += `
+                    <div class="question-image-container" style="max-width: 100%; border-radius: 15px; overflow: hidden; margin-bottom: 15px;">
+                        <video id="q-video" src="${data.video_url}" controls autoplay loop style="width: 100%; max-height: 250px; display: block; border-radius: 15px;"></video>
+                    </div>
+                `;
+            }
+
             // === 🎵 معالجة الصوت (مع زر يدوي) 🎵 ===
             if (data.mode === 'audio') {
-                // 1. تنظيف القديم
                 stopCurrentAudio();
-
-                // 2. إنشاء الصوت الجديد
                 currentAudio = new Audio(data.audio_url);
-                currentAudio.volume = 1.0; // صوت كامل
+                currentAudio.volume = 1.0;
 
-                // 3. محاولة التشغيل التلقائي
                 let playPromise = currentAudio.play();
-                
                 if (playPromise !== undefined) {
                     playPromise.catch(error => {
                         console.log("Autoplay blocked, user must click play.");
                     });
                 }
 
-                // 4. إضافة زر تشغيل يدوي (لحل مشكلة عدم سماع الصوت)
                 contentDiv.innerHTML += `
                     <div style="margin: 20px 0;">
                         <div class="audio-visualizer" onclick="playCurrentAudio()">🔊</div>
@@ -326,7 +331,7 @@
                 contentDiv.appendChild(grid);
             }
 
-            startTimer(30); // زيادة الوقت قليلاً للأسئلة الصوتية
+            startTimer(30);
         }
 
         // دالة مساعدة لتشغيل الصوت يدوياً
@@ -337,12 +342,17 @@
             }
         }
 
-        // دالة مساعدة لإيقاف الصوت بأمان
+        // دالة مساعدة لإيقاف الصوت والفيديو بأمان
         function stopCurrentAudio() {
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.src = "";
                 currentAudio = null;
+            }
+            let vid = document.getElementById('q-video');
+            if (vid) {
+                vid.pause();
+                vid.src = "";
             }
         }
 

@@ -847,46 +847,90 @@ def gameover():
     if score > 5000: title = "محترف"
     return render_template('gameover.html', score=score, title=title)
 
-# ... (كود اللوبي) ...
+# ==========================================
+#  مسارات وأحداث الأونلاين (Multiplayer Lobby & Rooms)
+# ==========================================
+@app.route('/lobby')
+@app.route('/multiplayer_lobby')
+def lobby():
+    return render_template('lobby.html')
+
+@app.route('/room/<room_id>')
+def room(room_id):
+    return render_template('room.html', room_id=room_id)
+
 active_rooms = {}
 
 @socketio.on('connect')
-def on_connect(): emit('update_room_list', get_public_rooms_list())
+def on_connect(): 
+    emit('update_room_list', get_public_rooms_list())
 
 @socketio.on('create_room')
 def on_create_room(data):
     room_id = str(random.randint(1000, 9999))
-    active_rooms[room_id] = {'id': room_id, 'name': data['room_name'], 'password': data.get('password', ''), 'host': request.sid, 'players': [{'sid': request.sid, 'name': data['username'], 'score': 0}], 'state': 'waiting'}
+    active_rooms[room_id] = {
+        'id': room_id, 
+        'name': data['room_name'], 
+        'password': data.get('password', ''), 
+        'host': request.sid, 
+        'players': [{'sid': request.sid, 'name': data['username'], 'score': 0}], 
+        'state': 'waiting'
+    }
     join_room(room_id)
     emit('room_created_success', {'roomId': room_id, 'isHost': True})
     socketio.emit('update_room_list', get_public_rooms_list())
 
 @socketio.on('join_request')
 def on_join_request(data):
-    room = active_rooms.get(data['roomId'])
-    if not room: emit('error_msg', 'غرفة غير موجودة'); return
-    if room['state'] != 'waiting': emit('error_msg', 'بدأت اللعبة'); return
-    if room['password'] and room['password'] != data.get('password', ''): emit('error_msg', 'كلمة السر خطأ'); return
+    room_id = data['roomId']
+    room = active_rooms.get(room_id)
+    if not room: 
+        emit('error_msg', 'غرفة غير موجودة')
+        return
+    if room['state'] != 'waiting': 
+        emit('error_msg', 'بدأت اللعبة بالفعل!')
+        return
+    if room['password'] and room['password'] != data.get('password', ''): 
+        emit('error_msg', 'كلمة السر غير صحيحة')
+        return
+        
     room['players'].append({'sid': request.sid, 'name': data['username'], 'score': 0})
-    join_room(data['roomId'])
-    emit('join_success', {'roomId': data['roomId'], 'isHost': False})
-    socketio.to(data['roomId']).emit('update_players_in_room', room['players'])
+    join_room(room_id)
+    emit('join_success', {'roomId': room_id, 'isHost': False})
+    socketio.to(room_id).emit('update_players_in_room', room['players'])
     socketio.emit('update_room_list', get_public_rooms_list())
 
 @socketio.on('get_room_details')
 def get_room_details(data):
-    room = active_rooms.get(data['roomId'])
-    if room: emit('update_players_in_room', room['players'])
+    room_id = data.get('roomId')
+    room = active_rooms.get(room_id)
+    if room: 
+        join_room(room_id)
+        emit('update_players_in_room', room['players'])
+
+@socketio.on('start_room_game')
+def on_start_room_game(data):
+    room_id = data.get('roomId')
+    room = active_rooms.get(room_id)
+    if room and room['host'] == request.sid:
+        room['state'] = 'playing'
+        socketio.to(room_id).emit('game_started')
+        socketio.emit('update_room_list', get_public_rooms_list())
 
 @socketio.on('disconnect')
 def on_disconnect():
     to_delete = []
     for r_id, room in active_rooms.items():
         room['players'] = [p for p in room['players'] if p['sid'] != request.sid]
-        if not room['players']: to_delete.append(r_id)
-        else: socketio.to(r_id).emit('update_players_in_room', room['players'])
-    for r_id in to_delete: del active_rooms[r_id]
-    if to_delete: socketio.emit('update_room_list', get_public_rooms_list())
+        if not room['players']: 
+            to_delete.append(r_id)
+        else: 
+            socketio.to(r_id).emit('update_players_in_room', room['players'])
+            
+    for r_id in to_delete: 
+        del active_rooms[r_id]
+    if to_delete: 
+        socketio.emit('update_room_list', get_public_rooms_list())
 
 def get_public_rooms_list():
     return [{'id': r['id'], 'name': r['name'], 'count': len(r['players']), 'isPrivate': bool(r['password']), 'state': r['state']} for r in active_rooms.values()]

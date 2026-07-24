@@ -60,9 +60,12 @@
         });
         
         function startGame() {
-            // هنا سنرسل إشارة البدء للسيرفر لاحقاً
-            alert("قريباً: الانتقال لشاشة الأسئلة!");
+            socket.emit('start_room_game', { roomId: roomId });
         }
+
+        socket.on('game_started', () => {
+            window.location.href = '/play?mode=random';
+        });
     </script>
 </body>
 </html>
